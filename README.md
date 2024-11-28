@@ -9,14 +9,12 @@
 [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/fastdvdnet-towards-real-time-video-denoising/video-denoising-on-set8-sigma40)](https://paperswithcode.com/sota/video-denoising-on-set8-sigma40?p=fastdvdnet-towards-real-time-video-denoising)
 [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/fastdvdnet-towards-real-time-video-denoising/video-denoising-on-set8-sigma50)](https://paperswithcode.com/sota/video-denoising-on-set8-sigma50?p=fastdvdnet-towards-real-time-video-denoising)
 
-# FastDVDnet
+# Real-World & Real-Time FastDVDnet
 
-A state-of-the-art, simple and fast network for Deep Video Denoising which uses no motion compensation.
+This souce code provide a PyTorch implementation of a neural network for Real-World Blind Video Denoising that operates in Real-Time using FastDVDnet [M. Tassano et al. 2019](https://openaccess.thecvf.com/content_CVPR_2020/html/Tassano_FastDVDnet_Towards_Real-Time_Deep_Video_Denoising_Without_Flow_Estimation_CVPR_2020_paper.html) as backbone.
 
-Oral presentation at CVPR2020. [CVPR publication page](https://openaccess.thecvf.com/content_CVPR_2020/html/Tassano_FastDVDnet_Towards_Real-Time_Deep_Video_Denoising_Without_Flow_Estimation_CVPR_2020_paper.html)
 
-Previous deep video denoising algorithm: [DVDnet](https://github.com/m-tassano/dvdnet)
-
+# TODO
 ## Overview
 
 This source code provides a PyTorch implementation of the FastDVDnet video denoising algorithm, as in
