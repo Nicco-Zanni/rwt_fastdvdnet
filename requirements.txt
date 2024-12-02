@@ -1,0 +1,18 @@
+dependencies:
+  - future
+  - opencv
+  - mkl
+  - pip
+  - pycodestyle
+  - pytest
+  - python
+  - pytorch
+  - scikit-image
+  - torchvision
+  - pandas
+  - wandb
+  - pip:
+    - --extra-index-url https://pypi.nvidia.com --upgrade nvidia-dali-cuda110
+    - tensorboardx
+    - yuvio
+    - pytorch-msssim

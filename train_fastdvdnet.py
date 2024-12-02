@@ -199,7 +199,7 @@ if __name__ == "__main__":
 	#Training parameters
 	parser.add_argument("--batch_size", type=int, default=64, 	\
 					 help="Training batch size")
-	parser.add_argument("--epochs", "--e", type=int, default=80, \
+	parser.add_argument("--epochs", "--e", type=int, default=5, \
 					 help="Number of total training epochs")
 	parser.add_argument("--resume_training", "--r", action='store_true',\
 						help="resume training from a previous checkpoint")

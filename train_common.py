@@ -120,8 +120,8 @@ def validate_and_log(model_temp, dataset_val, valnoisestd, temp_psz, writer, \
 		for seq_val in dataset_val:
 			noise = torch.FloatTensor(seq_val.size()).normal_(mean=0, std=valnoisestd)
 			seqn_val = seq_val + noise
-			seqn_val = seqn_val.cuda()
-			sigma_noise = torch.cuda.FloatTensor([valnoisestd])
+			seqn_val = seqn_val.to(device)
+			sigma_noise = torch.tensor([valnoisestd], dtype=torch.float).to(device)
 
 			noisy_seq = generate_val_noisy_tensor(seq_val, noise_gen_folder, device=seq_val.device)
 
@@ -143,8 +143,8 @@ def validate_and_log(model_temp, dataset_val, valnoisestd, temp_psz, writer, \
 			
 			seq_val_y = rgb2y(seq_val.to(device))
 			out_val_y = rgb2y(out_val.to(device))
-			vmaf_val += vmaf(seq_val_y.to(device), out_val_y.to(device))
-			vmaf_neg_val += vmaf_neg(seq_val_y.to(device), out_val_y.to(device))
+			vmaf_val += vmaf(seq_val_y.cpu(), out_val_y.cpu())
+			vmaf_neg_val += vmaf_neg(seq_val_y.cpu(), out_val_y.cpu())
 
 		psnr_val /= len(dataset_val)
 		ssim_val /= len(dataset_val)
@@ -152,7 +152,7 @@ def validate_and_log(model_temp, dataset_val, valnoisestd, temp_psz, writer, \
 		vmaf_val /= len(dataset_val)
 		vmaf_neg_val /= len(dataset_val)
 		
-		print("\n[epoch %d] PSNR_val: %.4f, SSIM_val: %.4f, MS-SSIM_val: %.4f, VMAF_val: %.4f, on %.2f sec" % (epoch+1, psnr_val, ssim_val, ms_ssim_val, vmaf_val, tot_time))
+		print("\n[epoch %d] PSNR_val: %.4f, SSIM_val: %.4f, MS-SSIM_val: %.4f, VMAF_val: %.4f, VMAF-NEG_val: %.4f, on %.2f sec" % (epoch+1, psnr_val, ssim_val, ms_ssim_val, vmaf_val, vmaf_neg_val, tot_time))
 		writer.add_scalar('PSNR on validation data', psnr_val, epoch)
 		writer.add_scalar('SSIM on validation data', ssim_val, epoch)
 		writer.add_scalar('MS-SSIM on validation data', ms_ssim_val, epoch)

@@ -256,7 +256,7 @@ def rgb2y(rgb_tensor):
                                      [-0.147, -0.289,  0.436],  # U channel (not needed)
                                      [0.615, -0.515, -0.100]],  # V channel (not needed)
                                     dtype=torch.float32).to(rgb_tensor.device)
-	rgb_flat = rgb_tensor.view(-1, 3)  # reshape to [N*H*W, 3]
+	rgb_flat = rgb_tensor.reshape(-1, 3)  # reshape to [N*H*W, 3]
 	y_flat = torch.matmul(rgb_flat, transform_matrix[0].t())  # [N * H * W, 1] for Y
 	y_tensor = y_flat.view(rgb_tensor.shape[0], 1, rgb_tensor.shape[2], rgb_tensor.shape[3])
 	return y_tensor

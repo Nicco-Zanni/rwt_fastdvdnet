@@ -9,7 +9,7 @@ import subprocess
 def gaussian_kernel_1d(kernel_size, sigma=1):
 
     # corresponds to matlab fspecial('gaussian',hsize,sigma)
-    x = torch.arange(-(kernel_size//2), kernel_size//2+1).float()
+    x = torch.arange(-(kernel_size//2), kernel_size//2+1)
     gauss = torch.exp(-(x**2 / (2.0 * sigma**2)))
     gauss = gauss/gauss.sum()
 
@@ -57,14 +57,14 @@ def vmaf_pad(input, pad):
     return padded
 
 
-def fast_gaussian_blur(x, weight, stride=1, device='cuda'):
+def fast_gaussian_blur(x, weight, stride=1):
     '''Fast gaussian blur using separable filter
 
     Args:
         x: input image of shape (b,1,h,w)
         weight: 1d gaussian kernel of shape (1,1,1,kernel_size)
     '''
-    return F.conv2d(F.conv2d(x, weight.view(1, 1, 1, -1).to(device), stride=(1, stride)), weight.view(1, 1, -1, 1).to(device), stride=(stride, 1))
+    return F.conv2d(F.conv2d(x, weight.view(1, 1, 1, -1), stride=(1, stride)), weight.view(1, 1, -1, 1), stride=(stride, 1))
 
 
 def yuv_to_tensor(yuv_path, width, height, num_frames, channel='y'):
