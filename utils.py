@@ -10,7 +10,7 @@ from random import choices # requires Python >= 3.6
 import numpy as np
 import cv2
 import torch
-from skimage.measure.simple_metrics import compare_psnr
+from skimage.metrics import peak_signal_noise_ratio
 from tensorboardX import SummaryWriter
 
 IMAGETYPES = ('*.bmp', '*.png', '*.jpg', '*.jpeg', '*.tif') # Supported image types
@@ -240,9 +240,26 @@ def batch_psnr(img, imclean, data_range):
 	imgclean = imclean.data.cpu().numpy().astype(np.float32)
 	psnr = 0
 	for i in range(img_cpu.shape[0]):
-		psnr += compare_psnr(imgclean[i, :, :, :], img_cpu[i, :, :, :], \
+		psnr += peak_signal_noise_ratio(imgclean[i, :, :, :], img_cpu[i, :, :, :], \
 					   data_range=data_range)
 	return psnr/img_cpu.shape[0]
+
+def rgb2y(rgb_tensor):
+	r"""Converts a RGB image to YUV
+
+	Args:
+		rgb_tensor: a torch.Tensor of dims [N, 3, H, W] with RGB images
+	Returns:
+		y_tensor (luminance): a torch.Tensor of dims [N, 3, H, W] with YUV images
+	"""
+	transform_matrix = torch.tensor([[0.299,  0.587,  0.114],   # Y channel
+                                     [-0.147, -0.289,  0.436],  # U channel (not needed)
+                                     [0.615, -0.515, -0.100]],  # V channel (not needed)
+                                    dtype=torch.float32).to(rgb_tensor.device)
+	rgb_flat = rgb_tensor.view(-1, 3)  # reshape to [N*H*W, 3]
+	y_flat = torch.matmul(rgb_flat, transform_matrix[0].t())  # [N * H * W, 1] for Y
+	y_tensor = y_flat.view(rgb_tensor.shape[0], 1, rgb_tensor.shape[2], rgb_tensor.shape[3])
+	return y_tensor
 
 def variable_to_cv2_image(invar, conv_rgb_to_bgr=True):
 	r"""Converts a torch.autograd.Variable to an OpenCV image

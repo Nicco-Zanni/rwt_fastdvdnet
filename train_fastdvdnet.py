@@ -96,20 +96,7 @@ def main(**args):
 			optimizer.zero_grad()
 
 			img_train = data[0]['data'].to('cuda')  # [N, num_frames, C, H, W]
-			'''
-			# Add Custom Noise
-			noisy_img_train = torch.empty_like(img_train)
-			for n in range(noisy_img_train.size(0)):  # batch
-				for f in range(noisy_img_train.size(1)):  # frames
-					f_intrcpt_R, f_m_R, f_a_R, f_intrcpt_G, f_m_G, f_a_G, f_intrcpt_B, f_m_B, f_a_B = load_param(args["noise_gen_folder"])
-					a, b = sample_param_RGB(f_intrcpt_R, f_m_R, f_a_R, f_intrcpt_G, f_m_G, f_a_G, f_intrcpt_B, f_m_B, f_a_B)
-					frm = img_train[n, f].cpu().numpy() / 255  # [C, H, W] normalized
-					frm = np.transpose(frm, (1, 2, 0))  # [H, W, C]
-					frm = add_noise(frm, a, b)
-					frm = (frm * 255.0).round().clip(0, 255)
-					frm = torch.from_numpy(frm).permute(2, 0, 1)
-					noisy_img_train[n, f] = frm
-			'''
+			
 			# Add Custom Noise
 			noisy_img_train = generate_train_noisy_tensor(img_train, args["noise_gen_folder"], device=img_train.device)  # [N, F, C, H, W]
 
@@ -168,18 +155,16 @@ def main(**args):
 		model.eval()
 
 		# Validation and log images
-		psnr_val = validate_and_log(
-						model_temp=model, \
-						dataset_val=dataset_val, \
-						valnoisestd=args['val_noiseL'], \
-						temp_psz=args['temp_patch_size'], \
-						writer=writer, \
-						epoch=epoch, \
-						lr=current_lr, \
-						logger=logger, \
-						trainimg=img_train, \
-						noise_gen_folder=args["noise_gen_folder"]
-						)
+		psnr_val, ssim_val, ms_ssim_val, vmaf_val, vmaf_neg_val = validate_and_log(model_temp=model, \
+																				dataset_val=dataset_val, \
+																				valnoisestd=args['val_noiseL'], \
+																				temp_psz=args['temp_patch_size'], \
+																				writer=writer, \
+																				epoch=epoch, \
+																				lr=current_lr, \
+																				logger=logger, \
+																				trainimg=img_train, \
+																				noise_gen_folder=args["noise_gen_folder"])
 
 		# save model and checkpoint
 		training_params['start_epoch'] = epoch + 1
@@ -190,7 +175,11 @@ def main(**args):
 				"Epoch": epoch,
 				"LR": current_lr,
 				"Train Loss (MSE)": mean(train_losses),
-				"PSNR val": psnr_val
+				"PSNR val": psnr_val,
+				"SSIM val": ssim_val,
+				"MS-SSIM val": ms_ssim_val,
+				"VMAF val": vmaf_val,
+				"VMAF NEG val": vmaf_neg_val
 			})
 
 	# Print elapsed time
@@ -232,7 +221,7 @@ if __name__ == "__main__":
 	# Preprocessing parameters
 	parser.add_argument("--patch_size", "--p", type=int, default=96, help="Patch size")
 	parser.add_argument("--temp_patch_size", "--tp", type=int, default=5, help="Temporal patch size")
-	parser.add_argument("--max_number_patches", "--m", type=int, default=256000, \
+	parser.add_argument("--max_number_patches", "--m", type=int, default=2560, \
 						help="Maximum number of patches")
 	# Dirs
 	parser.add_argument("--log_dir", type=str, default="logs", \

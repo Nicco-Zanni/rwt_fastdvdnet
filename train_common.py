@@ -5,9 +5,11 @@ import os
 import time
 import torch
 import torchvision.utils as tutils
-from utils import batch_psnr
+from utils import batch_psnr, rgb2y
 from fastdvdnet import denoise_seq_fastdvdnet
 from noise_generator.noise_sampling import generate_val_noisy_tensor
+from pytorch_msssim import ssim, ms_ssim
+from vmaf_torch import VMAF
 
 def	resume_training(argdict, model, optimizer):
 	""" Resumes previous training or starts anew
@@ -103,11 +105,17 @@ def save_model_checkpoint(model, argdict, optimizer, train_pars, epoch):
 	del save_dict
 
 def validate_and_log(model_temp, dataset_val, valnoisestd, temp_psz, writer, \
-					 epoch, lr, logger, trainimg, noise_gen_folder):
+					 epoch, lr, logger, trainimg, noise_gen_folder, device='cuda'):
 	"""Validation step after the epoch finished
 	"""
-	t1 = time.time()
+	tot_time = 0
 	psnr_val = 0
+	ssim_val = 0
+	ms_ssim_val = 0
+	vmaf = VMAF(temporal_pooling=True)
+	vmaf_neg = VMAF(NEG=True, temporal_pooling=True)
+	vmaf_val = 0
+	vmaf_neg_val = 0
 	with torch.no_grad():
 		for seq_val in dataset_val:
 			noise = torch.FloatTensor(seq_val.size()).normal_(mean=0, std=valnoisestd)
@@ -115,30 +123,41 @@ def validate_and_log(model_temp, dataset_val, valnoisestd, temp_psz, writer, \
 			seqn_val = seqn_val.cuda()
 			sigma_noise = torch.cuda.FloatTensor([valnoisestd])
 
-			'''
-			# Add Custom Noise Generator
-			noisy_seq = torch.empty_like(seq_val)
-			for f in range(noisy_img.size(0)):
-				f_intrcpt_R, f_m_R, f_a_R, f_intrcpt_G, f_m_G, f_a_G, f_intrcpt_B, f_m_B, f_a_B = load_param(noise_gen_folder)
-				a, b = sample_param_RGB(f_intrcpt_R, f_m_R, f_a_R, f_intrcpt_G, f_m_G, f_a_G, f_intrcpt_B, f_m_B, f_a_B)
-				frm = seq_val[f].cpu().numpy() / 255  # [C, H, W] normalized
-				frm = np.transpose(frm, (1, 2, 0))  # [H, W, C]
-				frm = add_noise(frm, a, b)
-				frm = (frm * 255.0).round().clip(0, 255)
-				frm = torch.from_numpy(frm).permute(2, 0, 1)
-				noisy_seq[f] = frm
-			'''
 			noisy_seq = generate_val_noisy_tensor(seq_val, noise_gen_folder, device=seq_val.device)
 
-			out_val = denoise_seq_fastdvdnet(seq=seqn_val, \
+			t1 = time.time()
+
+			out_val = denoise_seq_fastdvdnet(seq=noisy_seq, \
 											noise_std=sigma_noise, \
 											temp_psz=temp_psz,\
 											model_temporal=model_temp)
-			psnr_val += batch_psnr(out_val.cpu(), seq_val.squeeze_(), 1.)
+
+			t2 = time.time()
+			tot_time += t2 - t1
+
+			seq_val = seq_val.squeeze_()
+
+			psnr_val += batch_psnr(out_val.cpu(), seq_val, data_range=1.)
+			ssim_val += ssim(out_val.to(device), seq_val.to(device), data_range=1, size_average=True)
+			ms_ssim_val += ms_ssim(out_val.to(device), seq_val.to(device), data_range=1, size_average=True)
+			
+			seq_val_y = rgb2y(seq_val.to(device))
+			out_val_y = rgb2y(out_val.to(device))
+			vmaf_val += vmaf(seq_val_y.to(device), out_val_y.to(device))
+			vmaf_neg_val += vmaf_neg(seq_val_y.to(device), out_val_y.to(device))
+
 		psnr_val /= len(dataset_val)
-		t2 = time.time()
-		print("\n[epoch %d] PSNR_val: %.4f, on %.2f sec" % (epoch+1, psnr_val, (t2-t1)))
+		ssim_val /= len(dataset_val)
+		ms_ssim_val /= len(dataset_val)
+		vmaf_val /= len(dataset_val)
+		vmaf_neg_val /= len(dataset_val)
+		
+		print("\n[epoch %d] PSNR_val: %.4f, SSIM_val: %.4f, MS-SSIM_val: %.4f, VMAF_val: %.4f, on %.2f sec" % (epoch+1, psnr_val, ssim_val, ms_ssim_val, vmaf_val, tot_time))
 		writer.add_scalar('PSNR on validation data', psnr_val, epoch)
+		writer.add_scalar('SSIM on validation data', ssim_val, epoch)
+		writer.add_scalar('MS-SSIM on validation data', ms_ssim_val, epoch)
+		writer.add_scalar('VMAF on validation data', vmaf_val, epoch)
+		writer.add_scalar('VMAF-NEG on validation data', vmaf_neg_val, epoch)
 		writer.add_scalar('Learning rate', lr, epoch)
 
 	# Log val images
@@ -168,4 +187,4 @@ def validate_and_log(model_temp, dataset_val, valnoisestd, temp_psz, writer, \
 	except Exception as e:
 		logger.error("validate_and_log_temporal(): Couldn't log results, {}".format(e))
 
-	return psnr_val
+	return psnr_val, ssim_val, ms_ssim_val, vmaf_val, vmaf_neg_val
