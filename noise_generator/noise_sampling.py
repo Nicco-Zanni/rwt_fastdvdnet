@@ -8,6 +8,7 @@ from scipy.stats import ks_2samp
 import argparse
 import os
 import torch
+import time
 
 
 def inv_sampling(x,bin_width= 0.00001,test_samples=500):        
@@ -195,8 +196,7 @@ def generate_val_noisy_tensor(seq, noise_gen_folder, device='cuda'):
     f_intrcpt_R, f_m_R, f_a_R, f_intrcpt_G, f_m_G, f_a_G, f_intrcpt_B, f_m_B, f_a_B = load_param(noise_gen_folder)
 
     # Reshape to [N*F, C, H, W]
-    F, C, H, W = seq.shape
-    seq = seq / 255.0  # [N*F, C, H, W] normalized
+    F, C, H, W = seq.shape  # [F, C, H, W] normalized
 
     # Sample noise parameters for each frame
     a_array = torch.zeros((F, C), device=device)
@@ -216,7 +216,7 @@ def generate_val_noisy_tensor(seq, noise_gen_folder, device='cuda'):
     # Apply noise
     noisy_seq = add_noise_tensor(seq, a_array, b_array)
 
-    return (noisy_seq * 255).round().clamp(0, 255)
+    return noisy_seq
 
  
 def to_ImageFromArray(a):

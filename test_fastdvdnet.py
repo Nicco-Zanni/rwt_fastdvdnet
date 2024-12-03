@@ -12,6 +12,10 @@ from models import FastDVDnet
 from fastdvdnet import denoise_seq_fastdvdnet
 from utils import batch_psnr, init_logger_test, \
 				variable_to_cv2_image, remove_dataparallel_wrapper, open_sequence, close_logger
+from noise_generator.noise_sampling import generate_val_noisy_tensor, generate_train_noisy_tensor
+from PIL import Image
+import numpy as np
+
 
 NUM_IN_FR_EXT = 5 # temporal size of patch
 MC_ALGO = 'DeepFlow' # motion estimation algorithm
@@ -95,13 +99,29 @@ def test_fastdvdnet(**args):
 									expand_if_needed=False,\
 									max_num_fr=args['max_num_fr_per_seq'])
 		seq = torch.from_numpy(seq).to(device)
+
 		seq_time = time.time()
 
+		seq_img = (seq[0] * 255).to('cpu').numpy().astype(np.uint8)
+		seq_img = seq_img.transpose(1, 2, 0)
+		seq_img = Image.fromarray(seq_img)
+		seq_img.save("results/before_noise.png")
+
 		# Add noise
-		noise = torch.empty_like(seq).normal_(mean=0, std=args['noise_sigma']).to(device)
-		seqn = seq + noise
+		if args['custom_noise']:
+			seqn = generate_val_noisy_tensor(seq, args['noise_gen_folder'], device=seq.device)
+		
+		else:
+			noise = torch.empty_like(seq).normal_(mean=0, std=args['noise_sigma']).to(device)
+			seqn = seq + noise
 		noisestd = torch.FloatTensor([args['noise_sigma']]).to(device)
 
+		'''
+		seq_img = (seqn[0]).to('cpu').numpy().astype(np.uint8)
+		seq_img = seq_img.transpose(1, 2, 0)
+		seq_img = Image.fromarray(seq_img)
+		seq_img.save("results/after_noise.png")
+		'''
 		denframes = denoise_seq_fastdvdnet(seq=seqn,\
 										noise_std=noisestd,\
 										temp_psz=NUM_IN_FR_EXT,\
@@ -122,8 +142,7 @@ def test_fastdvdnet(**args):
 	# Save outputs
 	if not args['dont_save_results']:
 		# Save sequence
-		save_out_seq(seqn, denframes, args['save_path'], \
-					   int(args['noise_sigma']*255), args['suffix'], args['save_noisy'])
+		save_out_seq(seqn, denframes, args['save_path'], int(args['noise_sigma']*255), args['suffix'], args['save_noisy'])
 
 	# close logger
 	close_logger(logger)
@@ -147,6 +166,11 @@ if __name__ == "__main__":
 						 help='where to save outputs as png')
 	parser.add_argument("--gray", action='store_true',\
 						help='perform denoising of grayscale images instead of RGB')
+
+	# Custom noise
+	parser.add_argument("--custom_noise", action='store_true', help="use custom noise generator")
+	parser.add_argument("--noise_gen_folder", type=str, default="./noise_generator/", \
+					 help='path of noise generator folder')
 
 	argspar = parser.parse_args()
 	# Normalize noises ot [0, 1]

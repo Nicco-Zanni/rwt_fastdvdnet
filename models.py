@@ -26,7 +26,7 @@ class InputCvBlock(nn.Module):
 		super(InputCvBlock, self).__init__()
 		self.interm_ch = 30
 		self.convblock = nn.Sequential(
-			nn.Conv2d(num_in_frames*(3+1), num_in_frames*self.interm_ch, \
+			nn.Conv2d(num_in_frames*(3), num_in_frames*self.interm_ch, \
 					  kernel_size=3, padding=1, groups=num_in_frames, bias=False),
 			nn.BatchNorm2d(num_in_frames*self.interm_ch),
 			nn.ReLU(inplace=True),
@@ -112,13 +112,13 @@ class DenBlock(nn.Module):
 		for _, m in enumerate(self.modules()):
 			self.weight_init(m)
 
-	def forward(self, in0, in1, in2, noise_map):
+	def forward(self, in0, in1, in2):
 		'''Args:
 			inX: Tensor, [N, C, H, W] in the [0., 1.] range
 			noise_map: Tensor [N, 1, H, W] in the [0., 1.] range
 		'''
 		# Input convolution block
-		x0 = self.inc(torch.cat((in0, noise_map, in1, noise_map, in2, noise_map), dim=1))
+		x0 = self.inc(torch.cat((in0, in1, in2), dim=1))
 		# Downsampling
 		x1 = self.downc0(x0)
 		x2 = self.downc1(x1)
@@ -167,11 +167,11 @@ class FastDVDnet(nn.Module):
 		(x0, x1, x2, x3, x4) = tuple(x[:, 3*m:3*m+3, :, :] for m in range(self.num_input_frames))
 
 		# First stage
-		x20 = self.temp1(x0, x1, x2, noise_map)
-		x21 = self.temp1(x1, x2, x3, noise_map)
-		x22 = self.temp1(x2, x3, x4, noise_map)
+		x20 = self.temp1(x0, x1, x2)
+		x21 = self.temp1(x1, x2, x3)
+		x22 = self.temp1(x2, x3, x4)
 
 		#Second stage
-		x = self.temp2(x20, x21, x22, noise_map)
+		x = self.temp2(x20, x21, x22)
 
 		return x

@@ -97,35 +97,32 @@ def main(**args):
 
 			img_train = data[0]['data'].to('cuda')  # [N, num_frames, C, H, W]
 			
-			# Add Custom Noise
-			noisy_img_train = generate_train_noisy_tensor(img_train, args["noise_gen_folder"], device=img_train.device)  # [N, F, C, H, W]
+			# Add Noise
+			if args["custom_noise"]:
+				imgn_train = generate_train_noisy_tensor(img_train, args["noise_gen_folder"], device=img_train.device)  # [N, F, C, H, W]
+				img_train, imgn_train, gt_train = normalize_augment(img_train, imgn_train, ctrl_fr_idx)
+			else:
+				img_train, gt_train = normalize_augment(img_train, ctrl_fr_idx)
+				noise = torch.zeros_like(img_train)
+				noise = torch.normal(mean=noise, std=stdn.expand_as(noise))
+				imgn_train = img_train + noise
 
 			# convert inp to [N, num_frames*C. H, W] in  [0., 1.] from [N, num_frames, C. H, W] in [0., 255.]
 			# extract ground truth (central frame)
-			#img_train, gt_train = normalize_augment(img_train, ctrl_fr_idx)
-			img_train, noisy_img_train, gt_train = normalize_augment(img_train, noisy_img_train, ctrl_fr_idx)
-
-			N, _, H, W = noisy_img_train.size()
-
+			N, _, H, W = imgn_train.size()
 			# std dev of each sequence
 			stdn = torch.empty((N, 1, 1, 1)).cuda().uniform_(args['noise_ival'][0], to=args['noise_ival'][1])
 			# draw noise samples from std dev tensor
-			noise = torch.zeros_like(img_train)
-			noise = torch.normal(mean=noise, std=stdn.expand_as(noise))
-
-			#define noisy input
-			imgn_train = img_train + noise
 			
 			# Send tensors to GPU
 			gt_train = gt_train.cuda(non_blocking=True)
-			#imgn_train = imgn_train.cuda(non_blocking=True)
-			noisy_img_train = noisy_img_train.cuda(non_blocking=True)
-			noise = noise.cuda(non_blocking=True)
+			imgn_train = imgn_train.cuda(non_blocking=True)
+			#noise = noise.cuda(non_blocking=True)
 			noise_map = stdn.expand((N, 1, H, W)).cuda(non_blocking=True) # one channel per image
 
 			# Evaluate model and optimize it
 			#out_train = model(imgn_train, noise_map)
-			out_train = model(noisy_img_train, noise_map)
+			out_train = model(imgn_train, noise_map)
 
 			# Compute loss
 			loss = criterion(gt_train, out_train) / (N*2)
@@ -199,7 +196,7 @@ if __name__ == "__main__":
 	#Training parameters
 	parser.add_argument("--batch_size", type=int, default=64, 	\
 					 help="Training batch size")
-	parser.add_argument("--epochs", "--e", type=int, default=5, \
+	parser.add_argument("--epochs", "--e", type=int, default=80, \
 					 help="Number of total training epochs")
 	parser.add_argument("--resume_training", "--r", action='store_true',\
 						help="resume training from a previous checkpoint")
@@ -221,7 +218,7 @@ if __name__ == "__main__":
 	# Preprocessing parameters
 	parser.add_argument("--patch_size", "--p", type=int, default=96, help="Patch size")
 	parser.add_argument("--temp_patch_size", "--tp", type=int, default=5, help="Temporal patch size")
-	parser.add_argument("--max_number_patches", "--m", type=int, default=2560, \
+	parser.add_argument("--max_number_patches", "--m", type=int, default=256000, \
 						help="Maximum number of patches")
 	# Dirs
 	parser.add_argument("--log_dir", type=str, default="logs", \
@@ -231,6 +228,7 @@ if __name__ == "__main__":
 	parser.add_argument("--valset_dir", type=str, default=None, \
 					 help='path of validation set')
 
+	parser.add_argument("--custom_noise", action='store_true', help="Use custom noise")
 	parser.add_argument("--noise_gen_folder", type=str, default="./noise_generator/", \
 					 help='path of noise generator folder')
 	# WANDB
