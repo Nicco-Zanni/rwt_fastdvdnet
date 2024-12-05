@@ -17,6 +17,8 @@ from train_common import resume_training, lr_scheduler, log_train_psnr, \
 					validate_and_log, save_model_checkpoint
 from noise_generator.noise_sampling import add_noise, sample_param_RGB, load_param, generate_train_noisy_tensor
 from PIL import Image
+from vmaf_torch import VMAF
+from utils import rgb2y
 
 
 def main(**args):
@@ -64,6 +66,8 @@ def main(**args):
 	# Define loss
 	criterion = nn.MSELoss(reduction='sum')
 	criterion.cuda()
+	if args['vmaf_loss']:
+		vmaf = VMAF(temporal_pooling=True).cuda()
 
 	# Optimizer
 	optimizer = optim.Adam(model.parameters(), lr=args['lr'])
@@ -126,6 +130,11 @@ def main(**args):
 
 			# Compute loss
 			loss = criterion(gt_train, out_train) / (N*2)
+			if args['vmaf_loss']:
+				gt_train_y = rgb2y(gt_train.cuda())
+				out_train_y = rgb2y(out_train.cuda())
+				vmaf_loss = 100 - vmaf(gt_train_y, out_train_y)
+				loss = 0.5 * loss + 0.5 * vmaf_loss
 			loss.backward()
 			optimizer.step()
 			train_losses.append(loss.item())
@@ -231,8 +240,11 @@ if __name__ == "__main__":
 	parser.add_argument("--custom_noise", action='store_true', help="Use custom noise")
 	parser.add_argument("--noise_gen_folder", type=str, default="./noise_generator/", \
 					 help='path of noise generator folder')
+
+	# VMAF Loss
+	parser.add_argument("--vmaf_loss", action='store_true', help="Use VMAF loss")
 	# WANDB
-	parser.add_argument("--wandb_log", type=bool, default=True, help="Log in Weights & Biases")
+	parser.add_argument("--wandb_log", type=bool, default=False, help="Log in Weights & Biases")
 	argspar = parser.parse_args()
 
 	# Normalize noise between [0, 1]
