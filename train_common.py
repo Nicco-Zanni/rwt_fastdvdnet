@@ -7,7 +7,8 @@ import torch
 import torchvision.utils as tutils
 from utils import batch_psnr, rgb2y
 from fastdvdnet import denoise_seq_fastdvdnet
-from noise_generator.noise_sampling import generate_val_noisy_tensor
+from noise_generator import smartphone_noise_generator, real_noise_generator
+from noise_generator.real_noise_config import test_real_noise_probabilities
 from pytorch_msssim import ssim, ms_ssim
 from vmaf_torch import VMAF
 
@@ -105,7 +106,7 @@ def save_model_checkpoint(model, argdict, optimizer, train_pars, epoch):
 	del save_dict
 
 def validate_and_log(model_temp, dataset_val, valnoisestd, temp_psz, writer, \
-					 epoch, lr, logger, trainimg, noise_gen_folder, device='cuda'):
+					 epoch, lr, logger, trainimg, noise_gen_folder, noise_type, device='cuda'):
 	"""Validation step after the epoch finished
 	"""
 	tot_time = 0
@@ -118,16 +119,25 @@ def validate_and_log(model_temp, dataset_val, valnoisestd, temp_psz, writer, \
 	vmaf_neg_val = 0
 	with torch.no_grad():
 		for seq_val in dataset_val:
-			noise = torch.FloatTensor(seq_val.size()).normal_(mean=0, std=valnoisestd)
-			seqn_val = seq_val + noise
-			seqn_val = seqn_val.to(device)
-			sigma_noise = torch.tensor([valnoisestd], dtype=torch.float).to(device)
+			if noise_type == 'gaussian':
+				noise = torch.FloatTensor(seq_val.size()).normal_(mean=0, std=valnoisestd)
+				seqn_val = seq_val + noise
+				seqn_val = seqn_val.to(device)
+			
+			elif noise_type == 'smartphone':
+				seqn_val = generate_val_noisy_tensor(seq_val, noise_gen_folder, device=seq_val.device)
 
-			noisy_seq = generate_val_noisy_tensor(seq_val, noise_gen_folder, device=seq_val.device)
+			elif noise_type == 'real':
+				seqn_val, _ = real_noise_generator.apply_random_noise(seq_val.to(device), test_real_noise_probabilities, batch=False, noise_gen_folder=noise_gen_folder)
+				
+			else:
+				raise ValueError("Noise type not recognized")
+
+			sigma_noise = torch.FloatTensor([valnoisestd]).to(device)
 
 			t1 = time.time()
 
-			out_val = denoise_seq_fastdvdnet(seq=noisy_seq, \
+			out_val = denoise_seq_fastdvdnet(seq=seqn_val, \
 											noise_std=sigma_noise, \
 											temp_psz=temp_psz,\
 											model_temporal=model_temp)

@@ -15,7 +15,8 @@ from dataloaders import train_dali_loader
 from utils import svd_orthogonalization, close_logger, init_logging, normalize_augment
 from train_common import resume_training, lr_scheduler, log_train_psnr, \
 					validate_and_log, save_model_checkpoint
-from noise_generator.noise_sampling import add_noise, sample_param_RGB, load_param, generate_train_noisy_tensor
+from noise_generator import smartphone_noise_generator, real_noise_generator
+from noise_generator.real_noise_config import train_real_noise_probabilities
 from PIL import Image
 from vmaf_torch import VMAF
 from utils import rgb2y
@@ -102,14 +103,19 @@ def main(**args):
 			img_train = data[0]['data'].to('cuda')  # [N, num_frames, C, H, W]
 			
 			# Add Noise
-			if args["custom_noise"]:
-				imgn_train = generate_train_noisy_tensor(img_train, args["noise_gen_folder"], device=img_train.device)  # [N, F, C, H, W]
+			if args["noise_type"] == "smartphone":
+				imgn_train = smartphone_noise_generator.generate_train_noisy_tensor(img_train, args["noise_gen_folder"], device=img_train.device)  # [N, F, C, H, W]
 				img_train, imgn_train, gt_train = normalize_augment(img_train, imgn_train, ctrl_fr_idx)
-			else:
+			elif args["noise_type"] == "gaussian":
 				img_train, gt_train = normalize_augment(img_train, ctrl_fr_idx)
 				noise = torch.zeros_like(img_train)
 				noise = torch.normal(mean=noise, std=stdn.expand_as(noise))
 				imgn_train = img_train + noise
+			elif args["noise_type"] == "real":
+				imgn_train, _ = real_noise_generator.apply_random_noise(img_train, train_real_noise_probabilities, batch=True, noise_gen_folder=args["noise_gen_folder"])
+				img_train, imgn_train, gt_train = normalize_augment(img_train, imgn_train, ctrl_fr_idx)
+			else:
+				raise ValueError("Noise type not recognized")
 
 			# convert inp to [N, num_frames*C. H, W] in  [0., 1.] from [N, num_frames, C. H, W] in [0., 255.]
 			# extract ground truth (central frame)
@@ -170,7 +176,8 @@ def main(**args):
 																				lr=current_lr, \
 																				logger=logger, \
 																				trainimg=img_train, \
-																				noise_gen_folder=args["noise_gen_folder"])
+																				noise_gen_folder=args["noise_gen_folder"], \
+																				noise_type=args["noise_type"])
 
 		# save model and checkpoint
 		training_params['start_epoch'] = epoch + 1
@@ -237,7 +244,7 @@ if __name__ == "__main__":
 	parser.add_argument("--valset_dir", type=str, default=None, \
 					 help='path of validation set')
 
-	parser.add_argument("--custom_noise", action='store_true', help="Use custom noise")
+	parser.add_argument("--noise_type", type=str, default='gaussian', choices=['gaussian', 'smartphone', 'real'], help='type of noise')
 	parser.add_argument("--noise_gen_folder", type=str, default="./noise_generator/", \
 					 help='path of noise generator folder')
 

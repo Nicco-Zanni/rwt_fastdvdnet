@@ -12,7 +12,8 @@ from models import FastDVDnet
 from fastdvdnet import denoise_seq_fastdvdnet
 from utils import batch_psnr, init_logger_test, \
 				variable_to_cv2_image, remove_dataparallel_wrapper, open_sequence, close_logger
-from noise_generator.noise_sampling import generate_val_noisy_tensor, generate_train_noisy_tensor
+from noise_generator import smartphone_noise_generator, real_noise_generator
+from noise_generator.real_noise_config import test_real_noise_probabilities
 from PIL import Image
 import numpy as np
 
@@ -108,12 +109,19 @@ def test_fastdvdnet(**args):
 		seq_img.save("results/before_noise.png")
 
 		# Add noise
-		if args['custom_noise']:
-			seqn = generate_val_noisy_tensor(seq, args['noise_gen_folder'], device=seq.device)
+		if args['noise_type'] == 'smartphone':
+			noise_type = 'smartphone'
+			seqn = smartphone_noise_generator.generate_val_noisy_tensor(seq.unsqueeze(0), args['noise_gen_folder'], device=seq.device).squeeze(0)
 		
-		else:
+		elif args['noise_type'] == 'gaussian':
+			noise_type = 'gaussian'
 			noise = torch.empty_like(seq).normal_(mean=0, std=args['noise_sigma']).to(device)
 			seqn = seq + noise
+		
+		elif args['noise_type'] == 'real':
+			seqn, noise_type = real_noise_generator.apply_random_noise(seq, test_real_noise_probabilities, batch=False, noise_gen_folder=args['noise_gen_folder'])
+		else:
+			raise ValueError("Noise type not recognized")
 		noisestd = torch.FloatTensor([args['noise_sigma']]).to(device)
 
 		'''
@@ -137,6 +145,7 @@ def test_fastdvdnet(**args):
 	logger.info("Finished denoising {}".format(args['test_path']))
 	logger.info("\tDenoised {} frames in {:.3f}s, loaded seq in {:.3f}s".\
 				 format(seq_length, runtime, loadtime))
+	logger.info("\tNoise type: {}: {}".format(args['noise_type'], noise_type))
 	logger.info("\tPSNR noisy {:.4f}dB, PSNR result {:.4f}dB".format(psnr_noisy, psnr))
 
 	# Save outputs
@@ -168,7 +177,7 @@ if __name__ == "__main__":
 						help='perform denoising of grayscale images instead of RGB')
 
 	# Custom noise
-	parser.add_argument("--custom_noise", action='store_true', help="use custom noise generator")
+	parser.add_argument("--noise_type", type=str, default='gaussian', choices=['gaussian', 'smartphone', 'real'], help='type of noise')
 	parser.add_argument("--noise_gen_folder", type=str, default="./noise_generator/", \
 					 help='path of noise generator folder')
 
