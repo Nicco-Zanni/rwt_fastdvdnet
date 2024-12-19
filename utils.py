@@ -139,6 +139,72 @@ def get_imagenames(seq_dir, pattern=None):
 	files.sort(key=lambda f: int(''.join(filter(str.isdigit, f))))
 	return files
 
+def open_video(fpath, gray_mode, expand_if_needed=False, max_num_fr=100):
+	r""" Opens a video and expands it to even sizes if necesary
+	Args:
+		fpath: string, path to video
+		gray_mode: boolean, True indicating if video is to be open
+			in grayscale mode
+		expand_if_needed: if True, the spatial dimensions will be expanded if
+			size is odd
+		max_num_fr: maximum number of frames to load
+	Returns:
+		seq: array of dims [num_frames, C, H, W], C=1 grayscale or C=3 RGB, H and W are even.
+			The image gets normalized gets normalized to the range [0, 1].
+		expanded_h: True if original dim H was odd and image got expanded in this dimension.
+		expanded_w: True if original dim W was odd and image got expanded in this dimension.
+	"""
+	vidcap = cv2.VideoCapture(fpath)
+	if not vidcap.isOpened():
+		raise ValueError(f"Cannot open video file: {fpath}")
+    
+    # Get frame dimensions
+	num_frames = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
+	width = int(vidcap.get(cv2.CAP_PROP_FRAME_WIDTH))
+	height = int(vidcap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+	num_frames = min(num_frames, max_num_fr)
+	
+	# Track if the dimensions were expanded
+	expanded_h = height % 2 != 0
+	expanded_w = width % 2 != 0
+	
+	# Adjust dimensions if necessary
+	if expand_if_needed:
+		height = height + 1 if expanded_h else height
+		width = width + 1 if expanded_w else width
+		
+	seq_list = []
+	
+	print(f"Opening video: {fpath}")
+	for _ in range(num_frames):
+		success, img = vidcap.read()
+		if not success:
+			break
+
+		if not gray_mode:
+			img = (cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+		else:
+			# from HxWxC to  CxHxW grayscale image (C=1)
+			img = cv2.imread(fpath, cv2.IMREAD_GRAYSCALE)
+		
+		# Resize to even dimensions if expand_if_needed is True
+		if expand_if_needed:
+			img = cv2.resize(img, (width, height), interpolation=cv2.INTER_LINEAR)
+
+		# Normalize to [0, 1]
+		img = np.float32(img) / 255.0
+		
+		# Transpose to [C, H, W] format
+		img = img.transpose(2, 0, 1) if not gray_mode else img.transpose(2, 0, 1).reshape(1, height, width)
+
+		seq_list.append(img)
+
+	# Stack frames along the time axis
+	seq = np.stack(seq_list, axis=0)
+
+	vidcap.release()
+	return seq, expanded_h, expanded_w
+
 def open_sequence(seq_dir, gray_mode, expand_if_needed=False, max_num_fr=100):
 	r""" Opens a sequence of images and expands it to even sizes if necesary
 	Args:
