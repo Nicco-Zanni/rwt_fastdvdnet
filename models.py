@@ -158,7 +158,7 @@ class FastDVDnet(nn.Module):
 		for _, m in enumerate(self.modules()):
 			self.weight_init(m)
 
-	def forward(self, x, noise_map):
+	def forward(self, x):
 		'''Args:
 			x: Tensor, [N, num_frames*C, H, W] in the [0., 1.] range
 			noise_map: Tensor [N, 1, H, W] in the [0., 1.] range

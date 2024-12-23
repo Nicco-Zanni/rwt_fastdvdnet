@@ -178,7 +178,6 @@ def test_fastdvdnet(**args):
 			seqn, noise_type = real_noise_generator.apply_random_noise(seq, test_real_noise_probabilities, batch=False, noise_gen_folder=args['noise_gen_folder'])
 		else:
 			raise ValueError("Noise type not recognized")
-		noisestd = torch.FloatTensor([args['noise_sigma']]).to(device)
 
 		'''
 		seq_img = (seqn[0]).to('cpu').numpy().astype(np.uint8)
@@ -188,7 +187,6 @@ def test_fastdvdnet(**args):
 		'''
 		denoise_time = time.time()
 		denframes = denoise_seq_fastdvdnet(seq=seqn,\
-										noise_std=noisestd,\
 										temp_psz=NUM_IN_FR_EXT,\
 										model_temporal=model_temp)
 		denoise_time = time.time() - denoise_time
@@ -227,7 +225,7 @@ if __name__ == "__main__":
 	parser.add_argument("--multiple", action='store_true', help='denoise multiple sequences or videos')
 
 	parser.add_argument("--suffix", type=str, default="", help='suffix to add to output name')
-	parser.add_argument("--max_num_fr_per_seq", type=int, default=100000000, \
+	parser.add_argument("--max_num_fr_per_seq", type=int, default=25, \
 						help='max number of frames to load per sequence')
 	parser.add_argument("--noise_sigma", type=float, default=25, help='noise level used on test set')
 	parser.add_argument("--dont_save_results", action='store_true', help="don't save output images")

@@ -125,7 +125,7 @@ def validate_and_log(model_temp, dataset_val, valnoisestd, temp_psz, writer, \
 				seqn_val = seqn_val.to(device)
 			
 			elif noise_type == 'smartphone':
-				seqn_val = generate_val_noisy_tensor(seq_val, noise_gen_folder, device=seq_val.device)
+				seqn_val = smartphone_noise_generator.generate_val_noisy_tensor(seq_val, noise_gen_folder, device=seq_val.device)
 
 			elif noise_type == 'real':
 				seqn_val, _ = real_noise_generator.apply_random_noise(seq_val.to(device), test_real_noise_probabilities, batch=False, noise_gen_folder=noise_gen_folder)
@@ -133,12 +133,9 @@ def validate_and_log(model_temp, dataset_val, valnoisestd, temp_psz, writer, \
 			else:
 				raise ValueError("Noise type not recognized")
 
-			sigma_noise = torch.FloatTensor([valnoisestd]).to(device)
-
 			t1 = time.time()
 
 			out_val = denoise_seq_fastdvdnet(seq=seqn_val, \
-											noise_std=sigma_noise, \
 											temp_psz=temp_psz,\
 											model_temporal=model_temp)
 
