@@ -132,7 +132,7 @@ def test_fastdvdnet(**args):
 
 	# Create models
 	print('Loading models ...')
-	model_temp = FastDVDnet(num_input_frames=NUM_IN_FR_EXT)
+	model_temp = FastDVDnet(args["lightweight_model"], num_input_frames=NUM_IN_FR_EXT)
 
 	# Load saved weights
 	state_temp_dict = torch.load(args['model_file'], map_location=device)
@@ -155,8 +155,18 @@ def test_fastdvdnet(**args):
 									args['gray'],\
 									expand_if_needed=False,\
 									max_num_fr=args['max_num_fr_per_seq'])
+			if args['gt_path'] is not None:
+				seq_gt, _, _ = open_video(args['gt_path'],\
+										args['gray'],\
+										expand_if_needed=False,\
+										max_num_fr=args['max_num_fr_per_seq'])
 		else:
 			seq, _, _ = open_sequence(args['test_path'],\
+										args['gray'],\
+										expand_if_needed=False,\
+										max_num_fr=args['max_num_fr_per_seq'])
+			if args['gt_path'] is not None:
+				seq_gt, _, _ = open_sequence(args['gt_path'],\
 										args['gray'],\
 										expand_if_needed=False,\
 										max_num_fr=args['max_num_fr_per_seq'])
@@ -185,16 +195,20 @@ def test_fastdvdnet(**args):
 		seq_img = Image.fromarray(seq_img)
 		seq_img.save("results/after_noise.png")
 		'''
+		print("Denoising...")
 		denoise_time = time.time()
 		denframes = denoise_seq_fastdvdnet(seq=seqn,\
 										temp_psz=NUM_IN_FR_EXT,\
 										model_temporal=model_temp)
 		denoise_time = time.time() - denoise_time
 
+	if args['gt_path'] is None:
+		seq_gt = seq
+	seq_gt.to(seq.device)
 	# Compute PSNR and log it
 	runtime = open_seq_time + denoise_time
-	psnr = batch_psnr(denframes, seq, 1.)
-	psnr_noisy = batch_psnr(seqn.squeeze(), seq, 1.)
+	psnr = batch_psnr(denframes, seq_gt, 1.)
+	psnr_noisy = batch_psnr(seqn.squeeze(), seq_gt, 1.)
 	seq_length = seq.size()[0]
 	logger.info("Finished denoising {}".format(args['test_path']))
 	logger.info("\tDenoised {} frames in {:.3f}s, loaded seq in {:.3f}s, Total running time: {:.3f}".\
@@ -218,14 +232,19 @@ if __name__ == "__main__":
 	parser.add_argument("--model_file", type=str,\
 						default="./model.pth", \
 						help='path to model of the pretrained denoiser')
+
+	parser.add_argument("--lightweight_model", action='store_true', help='use lightweight FastDVDnet model')
+
 	parser.add_argument("--test_path", type=str, default="./data/rgb/Kodak24", \
 						help='path to sequence to denoise')
+
+	parser.add_argument("--gt_path", type=str, default=None, help='path to GT sequence to compute PSNR (default: clean input)')
 
 	parser.add_argument("--video", action='store_true', help='denoise video files instead of sequences')
 	parser.add_argument("--multiple", action='store_true', help='denoise multiple sequences or videos')
 
 	parser.add_argument("--suffix", type=str, default="", help='suffix to add to output name')
-	parser.add_argument("--max_num_fr_per_seq", type=int, default=25, \
+	parser.add_argument("--max_num_fr_per_seq", type=int, default=100000000, \
 						help='max number of frames to load per sequence')
 	parser.add_argument("--noise_sigma", type=float, default=25, help='noise level used on test set')
 	parser.add_argument("--dont_save_results", action='store_true', help="don't save output images")

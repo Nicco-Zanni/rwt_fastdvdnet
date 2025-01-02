@@ -110,6 +110,55 @@ def normalize_augment(img, noisy_img, ctrl_fr_idx):
 	# extract ground truth (central frame)
 	gt_train = img[:, 3*ctrl_fr_idx:3*ctrl_fr_idx+3, :, :]
 	return img, noisy_img, gt_train
+
+
+def normalize_augment(img, noisy_img, gt_img, ctrl_fr_idx):
+	'''Normalizes and augments two input patches (clean and noisy) of dim [N, num_frames, C. H, W] in [0., 255.] to \
+		[N, num_frames*C. H, W] in  [0., 1.]. It also returns the central frame of the temporal \
+		patch as a ground truth.
+	'''
+	def transform(sample1, sample2, sample3):
+		# define transformations
+		do_nothing = lambda x: x
+		do_nothing.__name__ = 'do_nothing'
+		flipud = lambda x: torch.flip(x, dims=[2])
+		flipud.__name__ = 'flipup'
+		rot90 = lambda x: torch.rot90(x, k=1, dims=[2, 3])
+		rot90.__name__ = 'rot90'
+		rot90_flipud = lambda x: torch.flip(torch.rot90(x, k=1, dims=[2, 3]), dims=[2])
+		rot90_flipud.__name__ = 'rot90_flipud'
+		rot180 = lambda x: torch.rot90(x, k=2, dims=[2, 3])
+		rot180.__name__ = 'rot180'
+		rot180_flipud = lambda x: torch.flip(torch.rot90(x, k=2, dims=[2, 3]), dims=[2])
+		rot180_flipud.__name__ = 'rot180_flipud'
+		rot270 = lambda x: torch.rot90(x, k=3, dims=[2, 3])
+		rot270.__name__ = 'rot270'
+		rot270_flipud = lambda x: torch.flip(torch.rot90(x, k=3, dims=[2, 3]), dims=[2])
+		rot270_flipud.__name__ = 'rot270_flipud'
+		add_csnt = lambda x: x + torch.normal(mean=torch.zeros(x.size()[0], 1, 1, 1), \
+								 std=(5/255.)).expand_as(x).to(x.device)
+		add_csnt.__name__ = 'add_csnt'
+
+		# define transformations and their frequency, then pick one.
+		aug_list = [do_nothing, flipud, rot90, rot90_flipud, \
+					rot180, rot180_flipud, rot270, rot270_flipud, add_csnt]
+		w_aug = [32, 12, 12, 12, 12, 12, 12, 12, 12] # one fourth chances to do_nothing
+		transf = choices(aug_list, w_aug)
+
+		# transform all images in array
+		return transf[0](sample1), transf[0](sample2), transf[0](sample3)
+
+	# convert to [N, num_frames*C. H, W] in  [0., 1.] from [N, num_frames, C. H, W] in [0., 255.]
+	img = img.view(img.size()[0], -1, img.size()[-2], img.size()[-1]) / 255.
+	noisy_img = noisy_img.view(noisy_img.size()[0], -1, noisy_img.size()[-2], noisy_img.size()[-1]) / 255.
+	gt_img = gt_img.view(gt_img.size()[0], -1, gt_img.size()[-2], gt_img.size()[-1]) / 255.
+
+	#augment
+	img, noisy_img, gt_img = transform(img, noisy_img, gt_img)
+
+	# extract ground truth (central frame)
+	gt_train = gt_img[:, 3*ctrl_fr_idx:3*ctrl_fr_idx+3, :, :]
+	return img, noisy_img, gt_train
 	
 
 def init_logging(argdict):

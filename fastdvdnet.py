@@ -36,7 +36,6 @@ def denoise_seq_fastdvdnet(seq, temp_psz, model_temporal):
 
 	Args:
 		seq: Tensor. [numframes, 1, C, H, W] array containing the noisy input frames
-		noise_std: Tensor. Standard deviation of the added noise
 		temp_psz: size of the temporal patch
 		model_temp: instance of the PyTorch model of the temporal denoiser
 	Returns:

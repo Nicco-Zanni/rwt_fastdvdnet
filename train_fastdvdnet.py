@@ -10,8 +10,8 @@ import torch.nn as nn
 import torch.optim as optim
 from statistics import mean
 from models import FastDVDnet
-from dataset import ValDataset
-from dataloaders import train_dali_loader
+from dataset import ValDataset, ValDatasetDual
+from dataloaders import train_dali_loader, train_dali_loader_dual
 from utils import svd_orthogonalization, close_logger, init_logging, normalize_augment
 from train_common import resume_training, lr_scheduler, log_train_psnr, \
 					validate_and_log, save_model_checkpoint
@@ -37,17 +37,31 @@ def main(**args):
 
 	# Load dataset
 	print('> Loading datasets ...')
-	dataset_val = ValDataset(valsetdir=args['valset_dir'], gray_mode=False)
-	for seq in dataset_val:
-		print(seq.shape)
-		break
-	loader_train = train_dali_loader(batch_size=args['batch_size'],\
-									file_root=args['trainset_dir'],\
+	
+	if args["gt_dir"] is not None:
+		# VAL 
+		dataset_val = ValDatasetDual(valsetdir=args['valset_dir'], gt_dir=args["gt_val_dir"], gray_mode=False)
+		loader_train = train_dali_loader_dual(batch_size=args['batch_size'],\
+									input_root=args['trainset_dir'],\
+									gt_root=args['gt_dir'],\
 									sequence_length=args['temp_patch_size'],\
 									crop_size=args['patch_size'],\
 									epoch_size=args['max_number_patches'],\
 									random_shuffle=True,\
 									temp_stride=3)
+
+	else:
+		dataset_val = ValDataset(valsetdir=args['valset_dir'], gray_mode=False)
+		for seq in dataset_val:
+			print(seq.shape)
+			break
+		loader_train = train_dali_loader(batch_size=args['batch_size'],\
+										file_root=args['trainset_dir'],\
+										sequence_length=args['temp_patch_size'],\
+										crop_size=args['patch_size'],\
+										epoch_size=args['max_number_patches'],\
+										random_shuffle=True,\
+										temp_stride=3)
 
 	num_minibatches = int(args['max_number_patches']//args['batch_size'])
 	ctrl_fr_idx = (args['temp_patch_size'] - 1) // 2
@@ -61,7 +75,7 @@ def main(**args):
 	torch.backends.cudnn.benchmark = True # CUDNN optimization
 
 	# Create model
-	model = FastDVDnet()
+	model = FastDVDnet(args["lightweight_model"])
 	model = nn.DataParallel(model, device_ids=device_ids).cuda()
 
 	# Define loss
@@ -100,22 +114,38 @@ def main(**args):
 			# When optimizer = optim.Optimizer(net.parameters()) we only zero the optim's grads
 			optimizer.zero_grad()
 
-			img_train = data[0]['data'].to('cuda')  # [N, num_frames, C, H, W]
+			img_train = data[0]['input'].to('cuda')  # [N, num_frames, C, H, W]
+
+			if args["gt_dir"] is not None:
+				gt_train = data[0]['ground_truth'].to('cuda')
+
+				# Add Noise
+				if args["noise_type"] == "smartphone":
+					imgn_train = smartphone_noise_generator.generate_train_noisy_tensor(img_train, args["noise_gen_folder"], device=img_train.device)  # [N, F, C, H, W]
+					img_train, imgn_train, gt_train = normalize_augment(img_train, imgn_train, gt_train, ctrl_fr_idx)
+				elif args["noise_type"] == "gaussian":
+					raise ValueError("Gaussian noise not yet supported with ground truth")
+				elif args["noise_type"] == "real":
+					imgn_train, _ = real_noise_generator.apply_random_noise(img_train, train_real_noise_probabilities, batch=True, noise_gen_folder=args["noise_gen_folder"])
+					img_train, imgn_train, gt_train = normalize_augment(img_train, imgn_train, gt_train, ctrl_fr_idx)
+				else:
+					raise ValueError("Noise type not recognized")
 			
-			# Add Noise
-			if args["noise_type"] == "smartphone":
-				imgn_train = smartphone_noise_generator.generate_train_noisy_tensor(img_train, args["noise_gen_folder"], device=img_train.device)  # [N, F, C, H, W]
-				img_train, imgn_train, gt_train = normalize_augment(img_train, imgn_train, ctrl_fr_idx)
-			elif args["noise_type"] == "gaussian":
-				img_train, gt_train = normalize_augment(img_train, ctrl_fr_idx)
-				noise = torch.zeros_like(img_train)
-				noise = torch.normal(mean=noise, std=stdn.expand_as(noise))
-				imgn_train = img_train + noise
-			elif args["noise_type"] == "real":
-				imgn_train, _ = real_noise_generator.apply_random_noise(img_train, train_real_noise_probabilities, batch=True, noise_gen_folder=args["noise_gen_folder"])
-				img_train, imgn_train, gt_train = normalize_augment(img_train, imgn_train, ctrl_fr_idx)
 			else:
-				raise ValueError("Noise type not recognized")
+				# Add Noise
+				if args["noise_type"] == "smartphone":
+					imgn_train = smartphone_noise_generator.generate_train_noisy_tensor(img_train, args["noise_gen_folder"], device=img_train.device)  # [N, F, C, H, W]
+					img_train, imgn_train, gt_train = normalize_augment(img_train, imgn_train, ctrl_fr_idx)
+				elif args["noise_type"] == "gaussian":
+					img_train, gt_train = normalize_augment(img_train, ctrl_fr_idx)
+					noise = torch.zeros_like(img_train)
+					noise = torch.normal(mean=noise, std=stdn.expand_as(noise))
+					imgn_train = img_train + noise
+				elif args["noise_type"] == "real":
+					imgn_train, _ = real_noise_generator.apply_random_noise(img_train, train_real_noise_probabilities, batch=True, noise_gen_folder=args["noise_gen_folder"])
+					img_train, imgn_train, gt_train = normalize_augment(img_train, imgn_train, ctrl_fr_idx)
+				else:
+					raise ValueError("Noise type not recognized")
 
 			# convert inp to [N, num_frames*C. H, W] in  [0., 1.] from [N, num_frames, C. H, W] in [0., 255.]
 			# extract ground truth (central frame)
@@ -172,7 +202,8 @@ def main(**args):
 																				logger=logger, \
 																				trainimg=img_train, \
 																				noise_gen_folder=args["noise_gen_folder"], \
-																				noise_type=args["noise_type"])
+																				noise_type=args["noise_type"], \
+																				gt=True if args["gt_val_dir"] is not None else False)
 
 		# save model and checkpoint
 		training_params['start_epoch'] = epoch + 1
@@ -243,6 +274,13 @@ if __name__ == "__main__":
 	parser.add_argument("--noise_gen_folder", type=str, default="./noise_generator/", \
 					 help='path of noise generator folder')
 
+	# Light-weight Model
+	parser.add_argument("--lightweight_model", action="store_true", help="Use a reduced model")
+
+	# Ground truth
+	parser.add_argument("--gt_dir", type=str, default=None, help="Path to ground truth images (default: input images)")
+	parser.add_argument("--gt_val_dir", type=str, default=None, help="Path to ground truth images for validation (default: val images)")
+
 	# VMAF Loss
 	parser.add_argument("--vmaf_loss", action='store_true', help="Use VMAF loss")
 	# WANDB
@@ -253,6 +291,11 @@ if __name__ == "__main__":
 	argspar.val_noiseL /= 255.
 	argspar.noise_ival[0] /= 255.
 	argspar.noise_ival[1] /= 255.
+
+	if argspar.gt_dir is None and argspar.gt_val_dir is not None:
+		raise ValueError("If gt_val_dir is provided, gt_dir must be provided as well")
+	if argspar.gt_dir is not None and argspar.gt_val_dir is None:
+		raise ValueError("If gt_dir is provided, gt_val_dir must be provided as well")
 
 	print("\n### Training FastDVDnet denoiser model ###")
 	print("> Parameters:")

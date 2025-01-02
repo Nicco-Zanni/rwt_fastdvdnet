@@ -107,7 +107,7 @@ class train_dali_loader():
 		else:
 			self.epoch_size = epoch_size
 		self.dali_iterator = pytorch.DALIGenericIterator(pipelines=self.pipeline,
-														output_map=["data"],
+														output_map=["input"],
 														size=self.epoch_size,
 														auto_reset=True)
 
@@ -116,3 +116,148 @@ class train_dali_loader():
 
 	def __iter__(self):
 		return self.dali_iterator.__iter__()
+
+
+class VideoReaderPipelineDual(Pipeline):
+    '''Pipeline for reading H264 videos from two directories and creating paired patches.
+    Args:
+        batch_size: (int)
+            Size of the batches
+        sequence_length: (int)
+            Frames to load per sequence
+        num_threads: (int)
+            Number of threads
+        device_id: (int)
+            GPU device ID
+        input_files: (list of str)
+            File names of input video files
+        gt_files: (list of str)
+            File names of ground truth video files
+        crop_size: (int)
+            Size of the crops
+        random_shuffle: (bool, optional, default=True)
+            Whether to randomly shuffle data
+        step: (int, optional, default=-1)
+            Frame interval between each sequence
+    '''
+    def __init__(self, batch_size, sequence_length, num_threads, device_id, input_files, gt_files,
+                 crop_size, random_shuffle=True, seed=12, step=-1):
+        super(VideoReaderPipelineDual, self).__init__(batch_size, num_threads, device_id, seed=seed)
+        
+        # VideoReader for input videos
+        self.input_reader = ops.VideoReader(
+            device="gpu",
+            filenames=input_files,
+            sequence_length=sequence_length,
+            normalized=False,
+            random_shuffle=random_shuffle,
+            image_type=types.DALIImageType.RGB,
+            dtype=types.DALIDataType.UINT8,
+            step=step,
+            initial_fill=16,
+			seed=seed
+        )
+        
+        # VideoReader for ground truth videos
+        self.gt_reader = ops.VideoReader(
+            device="gpu",
+            filenames=gt_files,
+            sequence_length=sequence_length,
+            normalized=False,
+            random_shuffle=random_shuffle,
+            image_type=types.DALIImageType.RGB,
+            dtype=types.DALIDataType.UINT8,
+            step=step,
+            initial_fill=16,
+			seed=seed
+        )
+        
+        # Crop and normalize operations
+        self.crop = ops.CropMirrorNormalize(
+            device="gpu",
+            crop_w=crop_size,
+            crop_h=crop_size,
+            output_layout='FCHW',
+            dtype=types.DALIDataType.FLOAT
+        )
+        self.uniform = ops.Uniform(range=(0.0, 1.0))  # used for random crop
+
+    def define_graph(self):
+        '''Define the data processing graph.'''
+        input_sequence = self.input_reader(name="InputReader")
+        gt_sequence = self.gt_reader(name="GTReader")
+
+        crop_pos_x = self.uniform()
+        crop_pos_y = self.uniform()
+        # Apply random crop to both input and ground truth sequences
+        input_cropped = self.crop(input_sequence, crop_pos_x=crop_pos_x, crop_pos_y=crop_pos_y)
+        gt_cropped = self.crop(gt_sequence, crop_pos_x=crop_pos_x, crop_pos_y=crop_pos_y)
+        
+        return input_cropped, gt_cropped
+
+
+class train_dali_loader_dual():
+    '''Dataloader for paired sequences from two video directories.
+    Args:
+        batch_size: (int)
+            Size of the batches
+        input_root: (str)
+            Path to directory with input video sequences
+        gt_root: (str)
+            Path to directory with ground truth video sequences
+        sequence_length: (int)
+            Frames to load per sequence
+        crop_size: (int)
+            Size of the crops
+        epoch_size: (int, optional, default=-1)
+            Size of the epoch
+        random_shuffle: (bool, optional, default=True)
+            Whether to randomly shuffle data
+        temp_stride: (int, optional, default=-1)
+            Frame interval between each sequence
+    '''
+    def __init__(self, batch_size, input_root, gt_root, sequence_length,
+                 crop_size, epoch_size=-1, random_shuffle=True, temp_stride=-1):
+        # Get list of video filenames for input and ground truth
+        input_files = sorted([os.path.join(input_root, f) for f in os.listdir(input_root)])
+        gt_files = sorted([os.path.join(gt_root, f) for f in os.listdir(gt_root)])
+        
+        # Ensure input and ground truth files are paired
+        assert len(input_files) == len(gt_files), "Mismatch in number of input and ground truth videos"
+        for inp, gt in zip(input_files, gt_files):
+            assert os.path.basename(inp) == os.path.basename(gt), \
+                f"Unmatched files: {inp} and {gt}"
+        
+        # Define and build the dual pipeline
+        self.pipeline = VideoReaderPipelineDual(
+            batch_size=batch_size,
+            sequence_length=sequence_length,
+            num_threads=2,
+            device_id=0,
+            input_files=input_files,
+            gt_files=gt_files,
+            crop_size=crop_size,
+            random_shuffle=random_shuffle,
+            step=temp_stride
+        )
+        self.pipeline.build()
+
+        # Define size of epoch
+        if epoch_size <= 0:
+            self.epoch_size = self.pipeline.epoch_size("InputReader")
+        else:
+            self.epoch_size = epoch_size
+        
+        # DALI iterator for paired sequences
+        self.dali_iterator = pytorch.DALIGenericIterator(
+            pipelines=self.pipeline,
+            output_map=["input", "ground_truth"],
+            size=self.epoch_size,
+            auto_reset=True
+        )
+
+    def __len__(self):
+        return self.epoch_size
+
+    def __iter__(self):
+        return iter(self.dali_iterator)

@@ -11,6 +11,8 @@ from noise_generator import smartphone_noise_generator, real_noise_generator
 from noise_generator.real_noise_config import test_real_noise_probabilities
 from pytorch_msssim import ssim, ms_ssim
 from vmaf_torch import VMAF
+import numpy as np
+from PIL import Image
 
 def	resume_training(argdict, model, optimizer):
 	""" Resumes previous training or starts anew
@@ -106,7 +108,7 @@ def save_model_checkpoint(model, argdict, optimizer, train_pars, epoch):
 	del save_dict
 
 def validate_and_log(model_temp, dataset_val, valnoisestd, temp_psz, writer, \
-					 epoch, lr, logger, trainimg, noise_gen_folder, noise_type, device='cuda'):
+					 epoch, lr, logger, trainimg, noise_gen_folder, noise_type, gt=False, device='cuda'):
 	"""Validation step after the epoch finished
 	"""
 	tot_time = 0
@@ -118,16 +120,23 @@ def validate_and_log(model_temp, dataset_val, valnoisestd, temp_psz, writer, \
 	vmaf_val = 0
 	vmaf_neg_val = 0
 	with torch.no_grad():
-		for seq_val in dataset_val:
+		for i, seq_val in enumerate(dataset_val):
 			if noise_type == 'gaussian':
-				noise = torch.FloatTensor(seq_val.size()).normal_(mean=0, std=valnoisestd)
-				seqn_val = seq_val + noise
-				seqn_val = seqn_val.to(device)
+				if gt:
+					raise ValueError("GT_dir noise not implemented for gaussian noise")
+				else:
+					noise = torch.FloatTensor(seq_val.size()).normal_(mean=0, std=valnoisestd)
+					seqn_val = seq_val + noise
+					seqn_val = seqn_val.to(device)
 			
 			elif noise_type == 'smartphone':
+				if gt:
+					seq_val, gt_val = seq_val[0], seq_val[1]
 				seqn_val = smartphone_noise_generator.generate_val_noisy_tensor(seq_val, noise_gen_folder, device=seq_val.device)
 
 			elif noise_type == 'real':
+				if gt:
+					seq_val, gt_val = seq_val[0], seq_val[1]
 				seqn_val, _ = real_noise_generator.apply_random_noise(seq_val.to(device), test_real_noise_probabilities, batch=False, noise_gen_folder=noise_gen_folder)
 				
 			else:
@@ -142,16 +151,19 @@ def validate_and_log(model_temp, dataset_val, valnoisestd, temp_psz, writer, \
 			t2 = time.time()
 			tot_time += t2 - t1
 
-			seq_val = seq_val.squeeze_()
+			if not gt:
+				gt_val = seq_val
 
-			psnr_val += batch_psnr(out_val.cpu(), seq_val, data_range=1.)
-			ssim_val += ssim(out_val.to(device), seq_val.to(device), data_range=1, size_average=True)
-			ms_ssim_val += ms_ssim(out_val.to(device), seq_val.to(device), data_range=1, size_average=True)
+			gt_val = gt_val.squeeze_().to(seq_val.device)
+
+			psnr_val += batch_psnr(out_val.cpu(), gt_val, data_range=1.)
+			ssim_val += ssim(out_val.to(device), gt_val.to(device), data_range=1, size_average=True)
+			ms_ssim_val += ms_ssim(out_val.to(device), gt_val.to(device), data_range=1, size_average=True)
 			
-			seq_val_y = rgb2y(seq_val.to(device))
+			gt_val_y = rgb2y(gt_val.to(device))
 			out_val_y = rgb2y(out_val.to(device))
-			vmaf_val += vmaf(seq_val_y.cpu(), out_val_y.cpu())
-			vmaf_neg_val += vmaf_neg(seq_val_y.cpu(), out_val_y.cpu())
+			vmaf_val += vmaf(gt_val_y.cpu(), out_val_y.cpu())
+			vmaf_neg_val += vmaf_neg(gt_val_y.cpu(), out_val_y.cpu())
 
 		psnr_val /= len(dataset_val)
 		ssim_val /= len(dataset_val)

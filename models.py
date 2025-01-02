@@ -88,11 +88,16 @@ class DenBlock(nn.Module):
 		noise_map: array with noise map of dim [N, 1, H, W]
 	"""
 
-	def __init__(self, num_input_frames=3):
+	def __init__(self, lightweight=False, num_input_frames=3):
 		super(DenBlock, self).__init__()
-		self.chs_lyr0 = 32
-		self.chs_lyr1 = 64
-		self.chs_lyr2 = 128
+		if lightweight:
+			self.chs_lyr0 = 8
+			self.chs_lyr1 = 8
+			self.chs_lyr2 = 8
+		else:
+			self.chs_lyr0 = 32
+			self.chs_lyr1 = 64
+			self.chs_lyr2 = 128
 
 		self.inc = InputCvBlock(num_in_frames=num_input_frames, out_ch=self.chs_lyr0)
 		self.downc0 = DownBlock(in_ch=self.chs_lyr0, out_ch=self.chs_lyr1)
@@ -140,12 +145,12 @@ class FastDVDnet(nn.Module):
 		noise_map: array with noise map of dim [N, 1, H, W]
 	"""
 
-	def __init__(self, num_input_frames=5):
+	def __init__(self, lightweight=False, num_input_frames=5):
 		super(FastDVDnet, self).__init__()
 		self.num_input_frames = num_input_frames
 		# Define models of each denoising stage
-		self.temp1 = DenBlock(num_input_frames=3)
-		self.temp2 = DenBlock(num_input_frames=3)
+		self.temp1 = DenBlock(lightweight, num_input_frames=3)
+		self.temp2 = DenBlock(lightweight, num_input_frames=3)
 		# Init weights
 		self.reset_params()
 
@@ -161,7 +166,6 @@ class FastDVDnet(nn.Module):
 	def forward(self, x):
 		'''Args:
 			x: Tensor, [N, num_frames*C, H, W] in the [0., 1.] range
-			noise_map: Tensor [N, 1, H, W] in the [0., 1.] range
 		'''
 		# Unpack inputs
 		(x0, x1, x2, x3, x4) = tuple(x[:, 3*m:3*m+3, :, :] for m in range(self.num_input_frames))
