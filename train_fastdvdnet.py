@@ -83,6 +83,8 @@ def main(**args):
 	criterion.cuda()
 	if args['vmaf_loss']:
 		vmaf = VMAF(temporal_pooling=True).cuda()
+	if args['vmaf_neg_loss']:
+		vmaf_neg = VMAF(NEG=True, temporal_pooling=True).cuda()
 
 	# Optimizer
 	optimizer = optim.Adam(model.parameters(), lr=args['lr'])
@@ -160,12 +162,19 @@ def main(**args):
 			out_train = model(imgn_train)
 
 			# Compute loss
-			loss = criterion(gt_train, out_train) / (N*2)
-			if args['vmaf_loss']:
+			mse_loss = criterion(gt_train, out_train) / (N*2)
+			vmaf_loss = 0
+			vmaf_neg_loss = 0
+			if args['vmaf_loss'] or args['vmaf_neg_loss']:
 				gt_train_y = rgb2y(gt_train.cuda())
 				out_train_y = rgb2y(out_train.cuda())
+
+			if args['vmaf_loss']:
 				vmaf_loss = 100 - vmaf(gt_train_y, out_train_y)
-				loss = 0.5 * loss + 0.5 * vmaf_loss
+			if args['vmaf_neg_loss']:
+				vmaf_neg_loss = 100 - vmaf_neg(gt_train_y, out_train_y)
+			
+			loss = args["mse_coef"] * mse_loss + args["vmaf_coef"] * vmaf_loss + args["vmaf_neg_coef"] * vmaf_neg_loss
 			loss.backward()
 			optimizer.step()
 			train_losses.append(loss.item())
@@ -283,6 +292,10 @@ if __name__ == "__main__":
 
 	# VMAF Loss
 	parser.add_argument("--vmaf_loss", action='store_true', help="Use VMAF loss")
+	parser.add_argument("--vmaf_neg_loss", action='store_true', help="Use VMAF loss")
+	parser.add_argument("--vmaf_coef", type=float, default='0.5', help="VMAF loss weight")
+	parser.add_argument("--vmaf_neg_coef", type=float, default='0.5', help="VMAF NEG loss weight")
+	parser.add_argument("--mse_coef", type=float, default='0.5', help="MSE loss weight")
 	# WANDB
 	parser.add_argument("--wandb_log", type=bool, default=False, help="Log in Weights & Biases")
 	argspar = parser.parse_args()
