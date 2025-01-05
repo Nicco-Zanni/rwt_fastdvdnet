@@ -136,8 +136,8 @@ def main(**args):
 			else:
 				# Add Noise
 				if args["noise_type"] == "smartphone":
-					imgn_train = smartphone_noise_generator.generate_train_noisy_tensor(img_train, args["noise_gen_folder"], device=img_train.device)  # [N, F, C, H, W]
-					img_train, imgn_train, gt_train = normalize_augment(img_train, imgn_train, ctrl_fr_idx)
+					imgn_train = smartphone_noise_generator.generate_train_noisy_tensor(img_train, args["noise_gen_folder"], device=img_train.device)  # [N, F, C, H, W] [0, 255]
+					img_train, imgn_train, gt_train = normalize_augment(img_train, imgn_train, ctrl_fr_idx) # [N, F*C, H, W] [0, 1]
 				elif args["noise_type"] == "gaussian":
 					img_train, gt_train = normalize_augment(img_train, ctrl_fr_idx)
 					noise = torch.zeros_like(img_train)
