@@ -130,6 +130,9 @@ def main(**args):
 				elif args["noise_type"] == "real":
 					imgn_train, _ = real_noise_generator.apply_random_noise(img_train, train_real_noise_probabilities, batch=True, noise_gen_folder=args["noise_gen_folder"])
 					img_train, imgn_train, gt_train = normalize_augment(img_train, imgn_train, gt_train, ctrl_fr_idx)
+				elif args["noise_type"] == "inherit":
+					imgn_train = img_train
+					img_train, imgn_train, gt_train = normalize_augment(img_train, imgn_train, gt_train, ctrl_fr_idx)
 				else:
 					raise ValueError("Noise type not recognized")
 			
@@ -146,6 +149,8 @@ def main(**args):
 				elif args["noise_type"] == "real":
 					imgn_train, _ = real_noise_generator.apply_random_noise(img_train, train_real_noise_probabilities, batch=True, noise_gen_folder=args["noise_gen_folder"])
 					img_train, imgn_train, gt_train = normalize_augment(img_train, imgn_train, ctrl_fr_idx)
+				elif args["noise_type"] == "inherit":
+					raise ValueError("Inherit noise not supported without ground truth")
 				else:
 					raise ValueError("Noise type not recognized")
 
@@ -279,7 +284,7 @@ if __name__ == "__main__":
 	parser.add_argument("--valset_dir", type=str, default=None, \
 					 help='path of validation set')
 
-	parser.add_argument("--noise_type", type=str, default='gaussian', choices=['gaussian', 'smartphone', 'real'], help='type of noise')
+	parser.add_argument("--noise_type", type=str, default='gaussian', choices=['gaussian', 'smartphone', 'real', 'inherit'], help='type of noise')
 	parser.add_argument("--noise_gen_folder", type=str, default="./noise_generator/", \
 					 help='path of noise generator folder')
 
