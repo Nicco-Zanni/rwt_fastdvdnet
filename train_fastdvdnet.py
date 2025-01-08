@@ -131,7 +131,7 @@ def main(**args):
 					imgn_train, _ = real_noise_generator.apply_random_noise(img_train, train_real_noise_probabilities, batch=True, noise_gen_folder=args["noise_gen_folder"])
 					img_train, imgn_train, gt_train = normalize_augment(img_train, imgn_train, gt_train, ctrl_fr_idx)
 				elif args["noise_type"] == "inherit":
-					imgn_train = img_train
+					imgn_train = img_train.clone()
 					img_train, imgn_train, gt_train = normalize_augment(img_train, imgn_train, gt_train, ctrl_fr_idx)
 				else:
 					raise ValueError("Noise type not recognized")

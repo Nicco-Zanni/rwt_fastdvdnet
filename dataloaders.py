@@ -142,7 +142,7 @@ class VideoReaderPipelineDual(Pipeline):
     '''
     def __init__(self, batch_size, sequence_length, num_threads, device_id, input_files, gt_files,
                  crop_size, random_shuffle=True, seed=12, step=-1):
-        super(VideoReaderPipelineDual, self).__init__(batch_size, num_threads, device_id, seed=seed)
+        super(VideoReaderPipelineDual, self).__init__(batch_size, num_threads, device_id, seed=seed, prefetch_queue_depth=2)
         
         # VideoReader for input videos
         self.input_reader = ops.VideoReader(
@@ -154,7 +154,7 @@ class VideoReaderPipelineDual(Pipeline):
             image_type=types.DALIImageType.RGB,
             dtype=types.DALIDataType.UINT8,
             step=step,
-            initial_fill=16,
+            initial_fill=32,
 			seed=seed
         )
         
@@ -168,7 +168,7 @@ class VideoReaderPipelineDual(Pipeline):
             image_type=types.DALIImageType.RGB,
             dtype=types.DALIDataType.UINT8,
             step=step,
-            initial_fill=16,
+            initial_fill=32,
 			seed=seed
         )
         
@@ -232,7 +232,7 @@ class train_dali_loader_dual():
         self.pipeline = VideoReaderPipelineDual(
             batch_size=batch_size,
             sequence_length=sequence_length,
-            num_threads=2,
+            num_threads=min(2, os.cpu_count()),
             device_id=0,
             input_files=input_files,
             gt_files=gt_files,

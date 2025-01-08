@@ -138,7 +138,11 @@ def validate_and_log(model_temp, dataset_val, valnoisestd, temp_psz, writer, \
 				if gt:
 					seq_val, gt_val = seq_val[0], seq_val[1]
 				seqn_val, _ = real_noise_generator.apply_random_noise(seq_val.to(device), test_real_noise_probabilities, batch=False, noise_gen_folder=noise_gen_folder)
-				
+
+			elif noise_type == 'inherit':
+				if gt:
+					seq_val, gt_val = seq_val[0], seq_val[1]
+				seqn_val = seq_val.clone()
 			else:
 				raise ValueError("Noise type not recognized")
 
