@@ -132,7 +132,7 @@ def test_fastdvdnet(**args):
 
 	# Create models
 	print('Loading models ...')
-	model_temp = FastDVDnet(args["lightweight_model"], num_input_frames=NUM_IN_FR_EXT)
+	model_temp = FastDVDnet(args["lightweight_model"], refine=args["refine"], num_input_frames=NUM_IN_FR_EXT)
 
 	# Load saved weights
 	state_temp_dict = torch.load(args['model_file'], map_location=device)
@@ -186,6 +186,10 @@ def test_fastdvdnet(**args):
 		
 		elif args['noise_type'] == 'real':
 			seqn, noise_type = real_noise_generator.apply_random_noise(seq, test_real_noise_probabilities, batch=False, noise_gen_folder=args['noise_gen_folder'])
+		
+		elif args['noise_type'] == 'inherit':
+			seqn = seq.clone()
+		
 		else:
 			raise ValueError("Noise type not recognized")
 
@@ -234,6 +238,7 @@ if __name__ == "__main__":
 						help='path to model of the pretrained denoiser')
 
 	parser.add_argument("--lightweight_model", action='store_true', help='use lightweight FastDVDnet model')
+	parser.add_argument("--refine", action="store_true", help="Use a refine block at the end of the model")
 
 	parser.add_argument("--test_path", type=str, default="./data/rgb/Kodak24", \
 						help='path to sequence to denoise')
@@ -244,7 +249,7 @@ if __name__ == "__main__":
 	parser.add_argument("--multiple", action='store_true', help='denoise multiple sequences or videos')
 
 	parser.add_argument("--suffix", type=str, default="", help='suffix to add to output name')
-	parser.add_argument("--max_num_fr_per_seq", type=int, default=100000000, \
+	parser.add_argument("--max_num_fr_per_seq", type=int, default=25, \
 						help='max number of frames to load per sequence')
 	parser.add_argument("--noise_sigma", type=float, default=25, help='noise level used on test set')
 	parser.add_argument("--dont_save_results", action='store_true', help="don't save output images")
@@ -256,7 +261,7 @@ if __name__ == "__main__":
 						help='perform denoising of grayscale images instead of RGB')
 
 	# Custom noise
-	parser.add_argument("--noise_type", type=str, default='gaussian', choices=['gaussian', 'smartphone', 'real'], help='type of noise')
+	parser.add_argument("--noise_type", type=str, default='gaussian', choices=['gaussian', 'smartphone', 'real', 'inherit'], help='type of noise')
 	parser.add_argument("--noise_gen_folder", type=str, default="./noise_generator/", \
 					 help='path of noise generator folder')
 

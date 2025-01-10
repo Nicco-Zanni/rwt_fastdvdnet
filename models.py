@@ -3,6 +3,7 @@ Definition of the FastDVDnet model
 """
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 class CvBlock(nn.Module):
 	'''(Conv2d => BN => ReLU) x 2'''
@@ -78,6 +79,23 @@ class OutputCvBlock(nn.Module):
 
 	def forward(self, x):
 		return self.convblock(x)
+	
+class RefineBlock(nn.Module):
+	def __init__(self, in_ch):
+		super(RefineBlock, self).__init__()
+		self.convblock = nn.Sequential(
+			nn.Conv2d(in_ch * 2, in_ch * 4, kernel_size=3, padding=1, bias=False),
+			nn.ReLU(inplace=True),
+			nn.Conv2d(in_ch * 4, in_ch * 2, kernel_size=3, padding=1, bias=False),
+			nn.ReLU(inplace=True),
+			nn.Conv2d(in_ch * 2, in_ch, kernel_size=3, padding=1, bias=False),
+		)
+	
+	def forward(self, x, x_n):
+		refine_in = torch.cat([x_n, x], dim=1)
+		omega = F.sigmoid(self.convblock(refine_in))
+		refine_out = torch.mul(x, (1 - omega)) + torch.mul(x_n, omega)
+		return refine_out
 
 class DenBlock(nn.Module):
 	""" Definition of the denosing block of FastDVDnet.
@@ -145,12 +163,17 @@ class FastDVDnet(nn.Module):
 		noise_map: array with noise map of dim [N, 1, H, W]
 	"""
 
-	def __init__(self, lightweight=False, num_input_frames=5):
+	def __init__(self, lightweight=False, refine=False, num_input_frames=5):
 		super(FastDVDnet, self).__init__()
 		self.num_input_frames = num_input_frames
 		# Define models of each denoising stage
 		self.temp1 = DenBlock(lightweight, num_input_frames=3)
 		self.temp2 = DenBlock(lightweight, num_input_frames=3)
+		if refine:
+			self.do_refine = True
+			self.refine = RefineBlock(3)
+		else:
+			self.do_refine = False
 		# Init weights
 		self.reset_params()
 
@@ -177,5 +200,8 @@ class FastDVDnet(nn.Module):
 
 		#Second stage
 		x = self.temp2(x20, x21, x22)
+
+		if self.do_refine:
+			x = self.refine(x, x2)
 
 		return x

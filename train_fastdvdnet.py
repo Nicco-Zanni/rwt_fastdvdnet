@@ -75,7 +75,7 @@ def main(**args):
 	torch.backends.cudnn.benchmark = True # CUDNN optimization
 
 	# Create model
-	model = FastDVDnet(args["lightweight_model"])
+	model = FastDVDnet(args["lightweight_model"], args["refine"])
 	model = nn.DataParallel(model, device_ids=device_ids).cuda()
 
 	# Define loss
@@ -274,7 +274,7 @@ if __name__ == "__main__":
 	# Preprocessing parameters
 	parser.add_argument("--patch_size", "--p", type=int, default=96, help="Patch size")
 	parser.add_argument("--temp_patch_size", "--tp", type=int, default=5, help="Temporal patch size")
-	parser.add_argument("--max_number_patches", "--m", type=int, default=256000, \
+	parser.add_argument("--max_number_patches", "--m", type=int, default=64000, \
 						help="Maximum number of patches")
 	# Dirs
 	parser.add_argument("--log_dir", type=str, default="logs", \
@@ -290,6 +290,9 @@ if __name__ == "__main__":
 
 	# Light-weight Model
 	parser.add_argument("--lightweight_model", action="store_true", help="Use a reduced model")
+
+	# Refine Block
+	parser.add_argument("--refine", action="store_true", help="Use a refine block at the end of the model")
 
 	# Ground truth
 	parser.add_argument("--gt_dir", type=str, default=None, help="Path to ground truth images (default: input images)")
