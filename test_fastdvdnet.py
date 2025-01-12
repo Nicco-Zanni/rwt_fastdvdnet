@@ -160,6 +160,7 @@ def test_fastdvdnet(**args):
 										args['gray'],\
 										expand_if_needed=False,\
 										max_num_fr=args['max_num_fr_per_seq'])
+				seq_gt = torch.from_numpy(seq_gt).to(device)
 		else:
 			seq, _, _ = open_sequence(args['test_path'],\
 										args['gray'],\
@@ -170,6 +171,8 @@ def test_fastdvdnet(**args):
 										args['gray'],\
 										expand_if_needed=False,\
 										max_num_fr=args['max_num_fr_per_seq'])
+				seq_gt = torch.from_numpy(seq_gt).to(device)
+
 		seq = torch.from_numpy(seq).to(device)
 
 		open_seq_time = time.time() - open_seq_time
@@ -188,6 +191,7 @@ def test_fastdvdnet(**args):
 			seqn, noise_type = real_noise_generator.apply_random_noise(seq, test_real_noise_probabilities, batch=False, noise_gen_folder=args['noise_gen_folder'])
 		
 		elif args['noise_type'] == 'inherit':
+			noise_type = 'inherit'
 			seqn = seq.clone()
 		
 		else:
@@ -249,7 +253,7 @@ if __name__ == "__main__":
 	parser.add_argument("--multiple", action='store_true', help='denoise multiple sequences or videos')
 
 	parser.add_argument("--suffix", type=str, default="", help='suffix to add to output name')
-	parser.add_argument("--max_num_fr_per_seq", type=int, default=25, \
+	parser.add_argument("--max_num_fr_per_seq", type=int, default=200, \
 						help='max number of frames to load per sequence')
 	parser.add_argument("--noise_sigma", type=float, default=25, help='noise level used on test set')
 	parser.add_argument("--dont_save_results", action='store_true', help="don't save output images")
