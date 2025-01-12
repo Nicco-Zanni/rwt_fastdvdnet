@@ -12,14 +12,13 @@ from statistics import mean
 from models import FastDVDnet
 from dataset import ValDataset, ValDatasetDual
 from dataloaders import train_dali_loader, train_dali_loader_dual
-from utils import svd_orthogonalization, close_logger, init_logging, normalize_augment
+from utils import *
 from train_common import resume_training, lr_scheduler, log_train_psnr, \
 					validate_and_log, save_model_checkpoint
 from noise_generator import smartphone_noise_generator, real_noise_generator
 from noise_generator.real_noise_config import train_real_noise_probabilities
 from PIL import Image
 from vmaf_torch import VMAF
-from utils import rgb2y
 
 
 def main(**args):
@@ -124,15 +123,15 @@ def main(**args):
 				# Add Noise
 				if args["noise_type"] == "smartphone":
 					imgn_train = smartphone_noise_generator.generate_train_noisy_tensor(img_train, args["noise_gen_folder"], device=img_train.device)  # [N, F, C, H, W]
-					img_train, imgn_train, gt_train = normalize_augment(img_train, imgn_train, gt_train, ctrl_fr_idx)
+					img_train, imgn_train, gt_train = normalize_augment_gt(img_train, imgn_train, gt_train, ctrl_fr_idx)
 				elif args["noise_type"] == "gaussian":
 					raise ValueError("Gaussian noise not yet supported with ground truth")
 				elif args["noise_type"] == "real":
 					imgn_train, _ = real_noise_generator.apply_random_noise(img_train, train_real_noise_probabilities, batch=True, noise_gen_folder=args["noise_gen_folder"])
-					img_train, imgn_train, gt_train = normalize_augment(img_train, imgn_train, gt_train, ctrl_fr_idx)
+					img_train, imgn_train, gt_train = normalize_augment_gt(img_train, imgn_train, gt_train, ctrl_fr_idx)
 				elif args["noise_type"] == "inherit":
 					imgn_train = img_train.clone()
-					img_train, imgn_train, gt_train = normalize_augment(img_train, imgn_train, gt_train, ctrl_fr_idx)
+					img_train, imgn_train, gt_train = normalize_augment_gt(img_train, imgn_train, gt_train, ctrl_fr_idx)
 				else:
 					raise ValueError("Noise type not recognized")
 			
@@ -142,7 +141,7 @@ def main(**args):
 					imgn_train = smartphone_noise_generator.generate_train_noisy_tensor(img_train, args["noise_gen_folder"], device=img_train.device)  # [N, F, C, H, W] [0, 255]
 					img_train, imgn_train, gt_train = normalize_augment(img_train, imgn_train, ctrl_fr_idx) # [N, F*C, H, W] [0, 1]
 				elif args["noise_type"] == "gaussian":
-					img_train, gt_train = normalize_augment(img_train, ctrl_fr_idx)
+					img_train, gt_train = normalize_augment_clean(img_train, ctrl_fr_idx)
 					noise = torch.zeros_like(img_train)
 					noise = torch.normal(mean=noise, std=stdn.expand_as(noise))
 					imgn_train = img_train + noise

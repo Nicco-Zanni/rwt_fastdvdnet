@@ -15,7 +15,7 @@ from tensorboardX import SummaryWriter
 
 IMAGETYPES = ('*.bmp', '*.png', '*.jpg', '*.jpeg', '*.tif') # Supported image types
 
-def normalize_augment(datain, ctrl_fr_idx):
+def normalize_augment_clean(datain, ctrl_fr_idx):
 	'''Normalizes and augments an input patch of dim [N, num_frames, C. H, W] in [0., 255.] to \
 		[N, num_frames*C. H, W] in  [0., 1.]. It also returns the central frame of the temporal \
 		patch as a ground truth.
@@ -112,7 +112,7 @@ def normalize_augment(img, noisy_img, ctrl_fr_idx):
 	return img, noisy_img, gt_train
 
 
-def normalize_augment(img, noisy_img, gt_img, ctrl_fr_idx):
+def normalize_augment_gt(img, noisy_img, gt_img, ctrl_fr_idx):
 	'''Normalizes and augments two input patches (clean and noisy) of dim [N, num_frames, C. H, W] in [0., 255.] to \
 		[N, num_frames*C. H, W] in  [0., 1.]. It also returns the central frame of the temporal \
 		patch as a ground truth.
