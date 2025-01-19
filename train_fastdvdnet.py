@@ -40,11 +40,16 @@ def main(**args):
 	if args["gt_dir"] is not None:
 		# VAL 
 		dataset_val = ValDatasetDual(valsetdir=args['valset_dir'], gt_dir=args["gt_val_dir"], gray_mode=False)
+		if args["enable_fast_train_patches"]:
+			loader_crop = False
+		else:
+			loader_crop = True
 		loader_train = train_dali_loader_dual(batch_size=args['batch_size'],\
 									input_root=args['trainset_dir'],\
 									gt_root=args['gt_dir'],\
-									sequence_length=args['temp_patch_size'],\
+									sequence_length=args['sequence_length'],\
 									crop_size=args['patch_size'],\
+									enable_crop=loader_crop,\
 									epoch_size=args['max_number_patches'],\
 									random_shuffle=True,\
 									temp_stride=3)
@@ -56,7 +61,7 @@ def main(**args):
 			break
 		loader_train = train_dali_loader(batch_size=args['batch_size'],\
 										file_root=args['trainset_dir'],\
-										sequence_length=args['temp_patch_size'],\
+										sequence_length=args['sequence_length'],\
 										crop_size=args['patch_size'],\
 										epoch_size=args['max_number_patches'],\
 										random_shuffle=True,\
@@ -70,7 +75,7 @@ def main(**args):
 	writer, logger = init_logging(args)
 
 	# Define GPU devices
-	device_ids = [0]
+	device_ids = [1]
 	torch.backends.cudnn.benchmark = True # CUDNN optimization
 
 	# Create model
@@ -115,73 +120,96 @@ def main(**args):
 			# When optimizer = optim.Optimizer(net.parameters()) we only zero the optim's grads
 			optimizer.zero_grad()
 
-			img_train = data[0]['input'].to('cuda')  # [N, num_frames, C, H, W]
+			img_seqs = data[0]['input'].to('cuda')  # [N, num_frames, C, H, W] if not gt_dir else [N, num_frames, H, W, C]
 
 			if args["gt_dir"] is not None:
-				gt_train = data[0]['ground_truth'].to('cuda')
-
-				# Add Noise
-				if args["noise_type"] == "smartphone":
-					imgn_train = smartphone_noise_generator.generate_train_noisy_tensor(img_train, args["noise_gen_folder"], device=img_train.device)  # [N, F, C, H, W]
-					img_train, imgn_train, gt_train = normalize_augment_gt(img_train, imgn_train, gt_train, ctrl_fr_idx)
-				elif args["noise_type"] == "gaussian":
-					raise ValueError("Gaussian noise not yet supported with ground truth")
-				elif args["noise_type"] == "real":
-					imgn_train, _ = real_noise_generator.apply_random_noise(img_train, train_real_noise_probabilities, batch=True, noise_gen_folder=args["noise_gen_folder"])
-					img_train, imgn_train, gt_train = normalize_augment_gt(img_train, imgn_train, gt_train, ctrl_fr_idx)
-				elif args["noise_type"] == "inherit":
-					imgn_train = img_train.clone()
-					img_train, imgn_train, gt_train = normalize_augment_gt(img_train, imgn_train, gt_train, ctrl_fr_idx)
-				else:
-					raise ValueError("Noise type not recognized")
+				B, F, H, W, C = img_seqs.shape
+				S = F // args["temp_patch_size"]
+				img_seqs = img_seqs.view(B, S, args["temp_patch_size"], H, W, C).permute(0, 1, 2, 5, 3, 4)
+				gt_seqs = data[0]['ground_truth'].to('cuda')
+				gt_seqs = gt_seqs.view(B, S, args["temp_patch_size"], H, W, C).permute(0, 1, 2, 5, 3, 4)
 			
 			else:
-				# Add Noise
-				if args["noise_type"] == "smartphone":
-					imgn_train = smartphone_noise_generator.generate_train_noisy_tensor(img_train, args["noise_gen_folder"], device=img_train.device)  # [N, F, C, H, W] [0, 255]
-					img_train, imgn_train, gt_train = normalize_augment(img_train, imgn_train, ctrl_fr_idx) # [N, F*C, H, W] [0, 1]
-				elif args["noise_type"] == "gaussian":
-					img_train, gt_train = normalize_augment_clean(img_train, ctrl_fr_idx)
-					noise = torch.zeros_like(img_train)
-					noise = torch.normal(mean=noise, std=stdn.expand_as(noise))
-					imgn_train = img_train + noise
-				elif args["noise_type"] == "real":
-					imgn_train, _ = real_noise_generator.apply_random_noise(img_train, train_real_noise_probabilities, batch=True, noise_gen_folder=args["noise_gen_folder"])
-					img_train, imgn_train, gt_train = normalize_augment(img_train, imgn_train, ctrl_fr_idx)
-				elif args["noise_type"] == "inherit":
-					raise ValueError("Inherit noise not supported without ground truth")
+				B, F, C, H, W = img_seqs.shape
+				S = F // args["temp_patch_size"]
+				img_seqs = img_seqs.view(B, S, args["temp_patch_size"], C, H, W)
+
+			# Apply random crop to both input and ground truth sequences
+			for sequence in range(S):
+				img_train = img_seqs[:, sequence, :, :, :, :].clone()
+				# Create patches
+				num_patches_h = H // args["patch_size"]
+				num_patches_w = W // args["patch_size"]
+				crop_pos_h = torch.randint(0, num_patches_h, (1,)) * args["patch_size"]
+				crop_pos_w = torch.randint(0, num_patches_w, (1,)) * args["patch_size"]
+				img_train = img_train[:, :, :, crop_pos_h:crop_pos_h+args["patch_size"], crop_pos_w:crop_pos_w+args["patch_size"]]
+				if args["gt_dir"] is not None:
+					
+					gt_train = gt_seqs[:, sequence, :, :, :, :].clone()
+					gt_train = gt_train[:, :, :, crop_pos_h:crop_pos_h+args["patch_size"], crop_pos_w:crop_pos_w+args["patch_size"]]
+					
+					# Add Noise
+					if args["noise_type"] == "smartphone":
+						imgn_train = smartphone_noise_generator.generate_train_noisy_tensor(img_train, args["noise_gen_folder"], device=img_train.device)  # [N, F, C, H, W]
+						img_train, imgn_train, gt_train = normalize_augment_gt(img_train, imgn_train, gt_train, ctrl_fr_idx)
+					elif args["noise_type"] == "gaussian":
+						raise ValueError("Gaussian noise not yet supported with ground truth")
+					elif args["noise_type"] == "real":
+						imgn_train, _ = real_noise_generator.apply_random_noise(img_train, train_real_noise_probabilities, batch=True, noise_gen_folder=args["noise_gen_folder"])
+						img_train, imgn_train, gt_train = normalize_augment_gt(img_train, imgn_train, gt_train, ctrl_fr_idx)
+					elif args["noise_type"] == "inherit":
+						imgn_train = img_train.clone()
+						img_train, imgn_train, gt_train = normalize_augment_gt(img_train, imgn_train, gt_train, ctrl_fr_idx)
+					else:
+						raise ValueError("Noise type not recognized")
+				
 				else:
-					raise ValueError("Noise type not recognized")
+					# Add Noise
+					if args["noise_type"] == "smartphone":
+						imgn_train = smartphone_noise_generator.generate_train_noisy_tensor(img_train, args["noise_gen_folder"], device=img_train.device)  # [N, F, C, H, W] [0, 255]
+						img_train, imgn_train, gt_train = normalize_augment(img_train, imgn_train, ctrl_fr_idx) # [N, F*C, H, W] [0, 1]
+					elif args["noise_type"] == "gaussian":
+						img_train, gt_train = normalize_augment_clean(img_train, ctrl_fr_idx)
+						noise = torch.zeros_like(img_train)
+						noise = torch.normal(mean=noise, std=stdn.expand_as(noise))
+						imgn_train = img_train + noise
+					elif args["noise_type"] == "real":
+						imgn_train, _ = real_noise_generator.apply_random_noise(img_train, train_real_noise_probabilities, batch=True, noise_gen_folder=args["noise_gen_folder"])
+						img_train, imgn_train, gt_train = normalize_augment(img_train, imgn_train, ctrl_fr_idx)
+					elif args["noise_type"] == "inherit":
+						raise ValueError("Inherit noise not supported without ground truth")
+					else:
+						raise ValueError("Noise type not recognized")
 
-			# convert inp to [N, num_frames*C. H, W] in  [0., 1.] from [N, num_frames, C. H, W] in [0., 255.]
-			# extract ground truth (central frame)
-			N, _, H, W = imgn_train.size()
-			
-			# Send tensors to GPU
-			gt_train = gt_train.cuda(non_blocking=True)
-			imgn_train = imgn_train.cuda(non_blocking=True)
+				# convert inp to [N, num_frames*C. H, W] in  [0., 1.] from [N, num_frames, C. H, W] in [0., 255.]
+				# extract ground truth (central frame)
+				N, _, H, W = imgn_train.size()
+				
+				# Send tensors to GPU
+				gt_train = gt_train.cuda(non_blocking=True)
+				imgn_train = imgn_train.cuda(non_blocking=True)
 
-			# Evaluate model and optimize it
-			#out_train = model(imgn_train, noise_map)
-			out_train = model(imgn_train)
+				# Evaluate model and optimize it
+				#out_train = model(imgn_train, noise_map)
+				out_train = model(imgn_train)
+				# Compute loss
+				mse_loss = criterion(gt_train, out_train) / (N*2)
+				vmaf_loss = 0
+				vmaf_neg_loss = 0
+				if args['vmaf_loss'] or args['vmaf_neg_loss']:
+					gt_train_y = rgb2y(gt_train.cuda())
+					out_train_y = rgb2y(out_train.cuda())
 
-			# Compute loss
-			mse_loss = criterion(gt_train, out_train) / (N*2)
-			vmaf_loss = 0
-			vmaf_neg_loss = 0
-			if args['vmaf_loss'] or args['vmaf_neg_loss']:
-				gt_train_y = rgb2y(gt_train.cuda())
-				out_train_y = rgb2y(out_train.cuda())
+				if args['vmaf_loss']:
+					vmaf_loss = 100 - vmaf(gt_train_y, out_train_y)
+				if args['vmaf_neg_loss']:
+					vmaf_neg_loss = 100 - vmaf_neg(gt_train_y, out_train_y)
+				
+				loss = args["mse_coef"] * mse_loss + args["vmaf_coef"] * vmaf_loss + args["vmaf_neg_coef"] * vmaf_neg_loss
 
-			if args['vmaf_loss']:
-				vmaf_loss = 100 - vmaf(gt_train_y, out_train_y)
-			if args['vmaf_neg_loss']:
-				vmaf_neg_loss = 100 - vmaf_neg(gt_train_y, out_train_y)
-			
-			loss = args["mse_coef"] * mse_loss + args["vmaf_coef"] * vmaf_loss + args["vmaf_neg_coef"] * vmaf_neg_loss
-			loss.backward()
-			optimizer.step()
-			train_losses.append(loss.item())
+				loss.backward()
+				optimizer.step()
+				train_losses.append(loss.item())
 
 			# Results
 			if training_params['step'] % args['save_every'] == 0:
@@ -251,11 +279,11 @@ if __name__ == "__main__":
 	#Training parameters
 	parser.add_argument("--batch_size", type=int, default=64, 	\
 					 help="Training batch size")
-	parser.add_argument("--epochs", "--e", type=int, default=80, \
+	parser.add_argument("--epochs", "--e", type=int, default=60, \
 					 help="Number of total training epochs")
 	parser.add_argument("--resume_training", "--r", action='store_true',\
 						help="resume training from a previous checkpoint")
-	parser.add_argument("--milestone", nargs=2, type=int, default=[50, 60], \
+	parser.add_argument("--milestone", nargs=2, type=int, default=[40, 50], \
 						help="When to decay learning rate; should be lower than 'epochs'")
 	parser.add_argument("--lr", type=float, default=1e-3, \
 					 help="Initial learning rate")
@@ -273,8 +301,10 @@ if __name__ == "__main__":
 	# Preprocessing parameters
 	parser.add_argument("--patch_size", "--p", type=int, default=96, help="Patch size")
 	parser.add_argument("--temp_patch_size", "--tp", type=int, default=5, help="Temporal patch size")
-	parser.add_argument("--max_number_patches", "--m", type=int, default=64000, \
+	parser.add_argument("--max_number_patches", "--m", type=int, default=128000, \
 						help="Maximum number of patches")
+	parser.add_argument("--sequence_length", type=int, default=5, help="Number of frames to be read from dataloader")
+	parser.add_argument("--enable_fast_train_patches", type=bool, default=True, help="Create patches directly on training script")
 	# Dirs
 	parser.add_argument("--log_dir", type=str, default="logs", \
 					 help='path of log files')

@@ -149,10 +149,10 @@ def normalize_augment_gt(img, noisy_img, gt_img, ctrl_fr_idx):
 		return transf[0](sample1), transf[0](sample2), transf[0](sample3)
 
 	# convert to [N, num_frames*C. H, W] in  [0., 1.] from [N, num_frames, C. H, W] in [0., 255.]
-	img = img.view(img.size()[0], -1, img.size()[-2], img.size()[-1]) / 255.
-	noisy_img = noisy_img.view(noisy_img.size()[0], -1, noisy_img.size()[-2], noisy_img.size()[-1]) / 255.
-	gt_img = gt_img.view(gt_img.size()[0], -1, gt_img.size()[-2], gt_img.size()[-1]) / 255.
-
+	img = img.contiguous().view(img.size()[0], -1, img.size()[-2], img.size()[-1]) / 255.
+	noisy_img = noisy_img.contiguous().view(noisy_img.size()[0], -1, noisy_img.size()[-2], noisy_img.size()[-1]) / 255.
+	gt_img = gt_img.contiguous().view(gt_img.size()[0], -1, gt_img.size()[-2], gt_img.size()[-1]) / 255.
+	
 	#augment
 	img, noisy_img, gt_img = transform(img, noisy_img, gt_img)
 

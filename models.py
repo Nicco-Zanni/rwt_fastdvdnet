@@ -84,11 +84,11 @@ class RefineBlock(nn.Module):
 	def __init__(self, in_ch):
 		super(RefineBlock, self).__init__()
 		self.convblock = nn.Sequential(
-			nn.Conv2d(in_ch * 2, in_ch * 4, kernel_size=3, padding=1, bias=False),
-			nn.ReLU(inplace=True),
-			nn.Conv2d(in_ch * 4, in_ch * 2, kernel_size=3, padding=1, bias=False),
-			nn.ReLU(inplace=True),
 			nn.Conv2d(in_ch * 2, in_ch, kernel_size=3, padding=1, bias=False),
+			nn.ReLU(inplace=True),
+			nn.Conv2d(in_ch, in_ch, kernel_size=3, padding=1, bias=False),
+			nn.ReLU(inplace=True),
+			nn.Conv2d(in_ch, 1, kernel_size=3, padding=1, bias=False),
 		)
 	
 	def forward(self, x, x_n):
@@ -109,9 +109,9 @@ class DenBlock(nn.Module):
 	def __init__(self, lightweight=False, num_input_frames=3):
 		super(DenBlock, self).__init__()
 		if lightweight:
-			self.chs_lyr0 = 8
-			self.chs_lyr1 = 8
-			self.chs_lyr2 = 8
+			self.chs_lyr0 = 16
+			self.chs_lyr1 = 32
+			self.chs_lyr2 = 64
 		else:
 			self.chs_lyr0 = 32
 			self.chs_lyr1 = 64

@@ -209,7 +209,7 @@ def test_fastdvdnet(**args):
 										temp_psz=NUM_IN_FR_EXT,\
 										model_temporal=model_temp)
 		denoise_time = time.time() - denoise_time
-
+	'''
 	if args['gt_path'] is None:
 		seq_gt = seq
 	seq_gt.to(seq.device)
@@ -223,7 +223,7 @@ def test_fastdvdnet(**args):
 				 format(seq_length, denoise_time, open_seq_time, runtime))
 	logger.info("\tNoise type: {}: {}".format(args['noise_type'], noise_type))
 	logger.info("\tPSNR noisy {:.4f}dB, PSNR result {:.4f}dB".format(psnr_noisy, psnr))
-
+	'''
 	# Save outputs
 	if not args['dont_save_results']:
 		if args["video"]:
