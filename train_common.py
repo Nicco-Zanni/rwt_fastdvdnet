@@ -7,7 +7,7 @@ import torch
 import torchvision.utils as tutils
 from utils import batch_psnr, rgb2y
 from fastdvdnet import denoise_seq_fastdvdnet
-from noise_generator import smartphone_noise_generator, real_noise_generator
+from noise_generator import smartphone_noise_generator, real_noise_generator, soft_noise_generator
 from noise_generator.real_noise_config import test_real_noise_probabilities
 from pytorch_msssim import ssim, ms_ssim
 from vmaf_torch import VMAF
@@ -138,6 +138,10 @@ def validate_and_log(model_temp, dataset_val, valnoisestd, temp_psz, writer, \
 				if gt:
 					seq_val, gt_val = seq_val[0], seq_val[1]
 				seqn_val, _ = real_noise_generator.apply_random_noise(seq_val.to(device), test_real_noise_probabilities, batch=False, noise_gen_folder=noise_gen_folder)
+
+			elif noise_type == "soft":
+				seqn_val = soft_noise_generator.add_soft_noise(torch.clamp(seq_val * 255, 0, 255).to(device), gain=4, sigma=2, device=device)
+				seqn_val = seqn_val / 255.
 
 			elif noise_type == 'inherit':
 				if gt:

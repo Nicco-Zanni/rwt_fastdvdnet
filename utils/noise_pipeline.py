@@ -176,6 +176,8 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    os.makedirs(args.output_path, exist_ok=True)
+
     if args.data_type == "images":
         sequences = [seq for seq in os.listdir(args.input_path) if os.path.isdir(os.path.join(args.input_path, seq))]
         for seq in sequences:
@@ -190,7 +192,3 @@ if __name__ == "__main__":
             add_noise_to_video(input_video_path, output_video_path, noise_type=args.noise_type, frame_rate=args.frame_rate, soft=args.soft)
     else:
         raise ValueError("Unsupported data type. Use 'video' or 'images'.")
-
-    if args.save_original:
-        out_orig_path = os.path.splitext(args.output_path)[0] + "_compr" + os.path.splitext(args.output_path)[1]
-        save_original_video(args.input_path, out_orig_path, frame_rate=args.frame_rate)

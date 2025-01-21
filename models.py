@@ -7,23 +7,35 @@ import torch.nn.functional as F
 
 class CvBlock(nn.Module):
 	'''(Conv2d => BN => ReLU) x 2'''
-	def __init__(self, in_ch, out_ch):
+	def __init__(self, in_ch, out_ch, depthwise=False):
 		super(CvBlock, self).__init__()
-		self.convblock = nn.Sequential(
-			nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1, bias=False),
-			nn.BatchNorm2d(out_ch),
-			nn.ReLU(inplace=True),
-			nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1, bias=False),
-			nn.BatchNorm2d(out_ch),
-			nn.ReLU(inplace=True)
-		)
+		if depthwise:
+			self.convblock = nn.Sequential(
+				nn.Conv2d(in_ch, in_ch, kernel_size=3, padding=1, groups=in_ch, bias=False),  # Depthwise
+				nn.Conv2d(in_ch, out_ch, kernel_size=1, padding=0, bias=False),  # Pointwise
+				nn.BatchNorm2d(out_ch),
+				nn.ReLU(inplace=True),
+				nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1, groups=out_ch, bias=False),  # Depthwise
+				nn.Conv2d(out_ch, out_ch, kernel_size=1, padding=0, bias=False),  # Pointwise
+				nn.BatchNorm2d(out_ch),
+				nn.ReLU(inplace=True),
+			)
+		else:
+			self.convblock = nn.Sequential(
+				nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1, bias=False),
+				nn.BatchNorm2d(out_ch),
+				nn.ReLU(inplace=True),
+				nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1, bias=False),
+				nn.BatchNorm2d(out_ch),
+				nn.ReLU(inplace=True)
+			)
 
 	def forward(self, x):
 		return self.convblock(x)
 
 class InputCvBlock(nn.Module):
 	'''(Conv with num_in_frames groups => BN => ReLU) + (Conv => BN => ReLU)'''
-	def __init__(self, num_in_frames, out_ch):
+	def __init__(self, num_in_frames, out_ch, depthwise=False):
 		super(InputCvBlock, self).__init__()
 		self.interm_ch = 30
 		self.convblock = nn.Sequential(
@@ -41,13 +53,13 @@ class InputCvBlock(nn.Module):
 
 class DownBlock(nn.Module):
 	'''Downscale + (Conv2d => BN => ReLU)*2'''
-	def __init__(self, in_ch, out_ch):
+	def __init__(self, in_ch, out_ch, depthwise=False):
 		super(DownBlock, self).__init__()
 		self.convblock = nn.Sequential(
 			nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1, stride=2, bias=False),
 			nn.BatchNorm2d(out_ch),
 			nn.ReLU(inplace=True),
-			CvBlock(out_ch, out_ch)
+			CvBlock(out_ch, out_ch, depthwise=depthwise)
 		)
 
 	def forward(self, x):
@@ -55,10 +67,10 @@ class DownBlock(nn.Module):
 
 class UpBlock(nn.Module):
 	'''(Conv2d => BN => ReLU)*2 + Upscale'''
-	def __init__(self, in_ch, out_ch):
+	def __init__(self, in_ch, out_ch, depthwise=False):
 		super(UpBlock, self).__init__()
 		self.convblock = nn.Sequential(
-			CvBlock(in_ch, in_ch),
+			CvBlock(in_ch, in_ch, depthwise=depthwise),
 			nn.Conv2d(in_ch, out_ch*4, kernel_size=3, padding=1, bias=False),
 			nn.PixelShuffle(2)
 		)
@@ -68,7 +80,7 @@ class UpBlock(nn.Module):
 
 class OutputCvBlock(nn.Module):
 	'''Conv2d => BN => ReLU => Conv2d'''
-	def __init__(self, in_ch, out_ch):
+	def __init__(self, in_ch, out_ch, depthwise=False):
 		super(OutputCvBlock, self).__init__()
 		self.convblock = nn.Sequential(
 			nn.Conv2d(in_ch, in_ch, kernel_size=3, padding=1, bias=False),
@@ -106,7 +118,7 @@ class DenBlock(nn.Module):
 		noise_map: array with noise map of dim [N, 1, H, W]
 	"""
 
-	def __init__(self, lightweight=False, num_input_frames=3):
+	def __init__(self, lightweight=False, depthwise=False, num_input_frames=3):
 		super(DenBlock, self).__init__()
 		if lightweight:
 			self.chs_lyr0 = 16
@@ -117,12 +129,12 @@ class DenBlock(nn.Module):
 			self.chs_lyr1 = 64
 			self.chs_lyr2 = 128
 
-		self.inc = InputCvBlock(num_in_frames=num_input_frames, out_ch=self.chs_lyr0)
-		self.downc0 = DownBlock(in_ch=self.chs_lyr0, out_ch=self.chs_lyr1)
-		self.downc1 = DownBlock(in_ch=self.chs_lyr1, out_ch=self.chs_lyr2)
-		self.upc2 = UpBlock(in_ch=self.chs_lyr2, out_ch=self.chs_lyr1)
-		self.upc1 = UpBlock(in_ch=self.chs_lyr1, out_ch=self.chs_lyr0)
-		self.outc = OutputCvBlock(in_ch=self.chs_lyr0, out_ch=3)
+		self.inc = InputCvBlock(num_in_frames=num_input_frames, out_ch=self.chs_lyr0, depthwise=depthwise)
+		self.downc0 = DownBlock(in_ch=self.chs_lyr0, out_ch=self.chs_lyr1, depthwise=depthwise)
+		self.downc1 = DownBlock(in_ch=self.chs_lyr1, out_ch=self.chs_lyr2, depthwise=depthwise)
+		self.upc2 = UpBlock(in_ch=self.chs_lyr2, out_ch=self.chs_lyr1, depthwise=depthwise)
+		self.upc1 = UpBlock(in_ch=self.chs_lyr1, out_ch=self.chs_lyr0, depthwise=depthwise)
+		self.outc = OutputCvBlock(in_ch=self.chs_lyr0, out_ch=3, depthwise=depthwise)
 
 		self.reset_params()
 
@@ -163,12 +175,12 @@ class FastDVDnet(nn.Module):
 		noise_map: array with noise map of dim [N, 1, H, W]
 	"""
 
-	def __init__(self, lightweight=False, refine=False, num_input_frames=5):
+	def __init__(self, lightweight=False, refine=False, depthwise=False, num_input_frames=5):
 		super(FastDVDnet, self).__init__()
 		self.num_input_frames = num_input_frames
 		# Define models of each denoising stage
-		self.temp1 = DenBlock(lightweight, num_input_frames=3)
-		self.temp2 = DenBlock(lightweight, num_input_frames=3)
+		self.temp1 = DenBlock(lightweight, depthwise=depthwise, num_input_frames=3)
+		self.temp2 = DenBlock(lightweight, depthwise=depthwise, num_input_frames=3)
 		if refine:
 			self.do_refine = True
 			self.refine = RefineBlock(3)
