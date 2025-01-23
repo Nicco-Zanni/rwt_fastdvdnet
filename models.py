@@ -121,9 +121,9 @@ class DenBlock(nn.Module):
 	def __init__(self, lightweight=False, depthwise=False, num_input_frames=3):
 		super(DenBlock, self).__init__()
 		if lightweight:
-			self.chs_lyr0 = 16
-			self.chs_lyr1 = 32
-			self.chs_lyr2 = 64
+			self.chs_lyr0 = 8
+			self.chs_lyr1 = 8
+			self.chs_lyr2 = 8
 		else:
 			self.chs_lyr0 = 32
 			self.chs_lyr1 = 64

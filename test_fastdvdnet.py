@@ -76,7 +76,7 @@ def save_out_video(seqnoisy, seqclean, save_dir, sigmaval, suffix, save_noisy, f
         noisy_video_name = os.path.join(save_dir, f'n{sigmaval}_noisy.mp4')
 
     # Define video writers
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec for MP4
+    fourcc = cv2.VideoWriter_fourcc(*'avc1')  # Codec for MP4
     clean_writer = cv2.VideoWriter(out_video_name, fourcc, fps, (W, H))
     noisy_writer = None
     if save_noisy:
@@ -209,7 +209,7 @@ def test_fastdvdnet(**args):
 										temp_psz=NUM_IN_FR_EXT,\
 										model_temporal=model_temp)
 		denoise_time = time.time() - denoise_time
-	'''
+	
 	if args['gt_path'] is None:
 		seq_gt = seq
 	seq_gt.to(seq.device)
@@ -223,7 +223,7 @@ def test_fastdvdnet(**args):
 				 format(seq_length, denoise_time, open_seq_time, runtime))
 	logger.info("\tNoise type: {}: {}".format(args['noise_type'], noise_type))
 	logger.info("\tPSNR noisy {:.4f}dB, PSNR result {:.4f}dB".format(psnr_noisy, psnr))
-	'''
+	
 	# Save outputs
 	if not args['dont_save_results']:
 		if args["video"]:

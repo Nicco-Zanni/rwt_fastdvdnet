@@ -12,7 +12,7 @@ from models import FastDVDnet
 from fastdvdnet import denoise_seq_fastdvdnet
 from utils import batch_psnr, init_logger_test, rgb2y, \
                 variable_to_cv2_image, remove_dataparallel_wrapper, open_sequence, close_logger, open_video
-from noise_generator import smartphone_noise_generator, real_noise_generator
+from noise_generator import smartphone_noise_generator, real_noise_generator, soft_noise_generator
 from noise_generator.real_noise_config import test_real_noise_probabilities
 from PIL import Image
 import numpy as np
@@ -50,7 +50,7 @@ def save_out_seq(seqnoisy, seqclean, save_dir, sigmaval, suffix, save_noisy):
         outimg = variable_to_cv2_image(seqclean[idx].unsqueeze(dim=0))
         cv2.imwrite(out_name, outimg)
 
-def save_out_video(seqnoisy, seqclean, save_path, save_noisy, fps=30):
+def save_out_video(seqnoisy, seqclean, save_path, save_noisy, fps=25):
     """
     Saves the denoised and noisy sequences as a video under save_dir.
 
@@ -127,7 +127,7 @@ def denoise_dataset(**args):
 
     # Create models
     print('Loading models ...')
-    model_temp = FastDVDnet(args["lightweight_model"], refine=args["refine"], num_input_frames=NUM_IN_FR_EXT)
+    model_temp = FastDVDnet(args["lightweight_model"], refine=args["refine"], depthwise=args["depthwise"], num_input_frames=NUM_IN_FR_EXT)
 
     # Load saved weights
     state_temp_dict = torch.load(args['model_file'], map_location=device)
@@ -152,7 +152,7 @@ def denoise_dataset(**args):
     vmaf_neg = VMAF(NEG=True, temporal_pooling=True)
     
     if args['data_type'] == 'video':
-        videos = [v for v in os.listdir(args["test_dir"]) if v.endswith(('.mp4', '.avi', '.mov'))]
+        videos = [v for v in os.listdir(args["test_dir"]) if v.endswith(('.mp4', '.avi', '.mkv'))]
         for video in videos:
             # process data
             open_seq_time = time.time()
@@ -160,13 +160,33 @@ def denoise_dataset(**args):
                                     gray_mode=False,\
                                     expand_if_needed=False,\
                                     max_num_fr=args['max_num_fr_per_seq'])
-            seq_gt, _, _ = open_video(os.path.join(args['gt_dir'], video),\
-                                    gray_mode=False,\
-                                    expand_if_needed=False,\
-                                    max_num_fr=args['max_num_fr_per_seq'])
-            
             seq = torch.from_numpy(seq).to(device)
-            seq_gt = torch.from_numpy(seq_gt).to(device)
+            if args["gt_dir"] is not None:
+                seq_gt, _, _ = open_video(os.path.join(args['gt_dir'], video),\
+                                        gray_mode=False,\
+                                        expand_if_needed=False,\
+                                        max_num_fr=args['max_num_fr_per_seq'])
+                seq_gt = torch.from_numpy(seq_gt).to(device)
+            else:
+                seq_gt = seq.clone().to(device)
+            
+                # Add noise
+                if args['noise_type'] == 'smartphone':
+                    noise_type = 'smartphone'
+                    seq = smartphone_noise_generator.generate_val_noisy_tensor(seq, args['noise_gen_folder'], device=seq.device).squeeze(0)
+                elif args['noise_type'] == 'gaussian':
+                    noise_type = 'gaussian'
+                    noise = torch.empty_like(seq).normal_(mean=0, std=args['noise_sigma']).to(device)
+                    seq = seq + noise
+                elif args['noise_type'] == 'real':
+                    seq, noise_type = real_noise_generator.apply_random_noise(seq, test_real_noise_probabilities, batch=False, noise_gen_folder=args['noise_gen_folder'])
+                elif args["noise_type"] == "soft":
+                    seq = soft_noise_generator.add_soft_noise(seq*255, sigma=2, gain=4, device=seq.device) / 255.
+                elif args['noise_type'] == 'inherit':
+                    noise_type = 'inherit'
+                    seq = seq.clone()
+                else:
+                    raise ValueError("Noise type not recognized")
 
             open_seq_time = time.time() - open_seq_time
 
@@ -180,14 +200,19 @@ def denoise_dataset(**args):
 
             print("Computing metrics...")
             # Compute Metrics
+            '''
             psnr_v, ssim_v, msssim_v, vmaf_v, vmaf_neg_v = compute_metrics(denframes, seq_gt, vmaf, vmaf_neg, data_range=1.0)
             psnrs.append(psnr_v.item())
             ssims.append(ssim_v.item())
             mssims.append(msssim_v.item())
             vmafs.append(vmaf_v.item())
             vmaf_negs.append(vmaf_neg_v.item())
+            '''
             runtimes.append((open_seq_time, denoise_time))
-
+            '''
+            print("PSNR: {}, SSIM: {}, MS-SSIM: {}, VMAF: {}, VMAF-NEG: {}, Runtime: opened in {} s, denoised in {} s".format(
+                psnr_v, ssim_v, msssim_v, vmaf_v, vmaf_neg_v, open_seq_time, denoise_time))
+            '''
             print("Saving outputs...")
             # Save outputs
             save_out_video(seq, denframes, os.path.join(args['save_path'], video), args['save_noisy'])
@@ -201,13 +226,34 @@ def denoise_dataset(**args):
                                     gray_mode=False,\
                                     expand_if_needed=False,\
                                     max_num_fr=args['max_num_fr_per_seq'])
-            seq_gt, _, _ = open_sequence(os.path.join(args['gt_dir'], sequence),\
-                                    gray_mode=False,\
-                                    expand_if_needed=False,\
-                                    max_num_fr=args['max_num_fr_per_seq'])
-            
             seq = torch.from_numpy(seq).to(device)
-            seq_gt = torch.from_numpy(seq_gt).to(device)
+            if args["gt_dir"] is not None:
+                seq_gt, _, _ = open_sequence(os.path.join(args['gt_dir'], sequence),\
+                                        gray_mode=False,\
+                                        expand_if_needed=False,\
+                                        max_num_fr=args['max_num_fr_per_seq'])
+                seq_gt = torch.from_numpy(seq_gt).to(device)
+            
+            else:
+                seq_gt = seq.clone().to(device)
+            
+                # Add noise
+                if args['noise_type'] == 'smartphone':
+                    noise_type = 'smartphone'
+                    seq = smartphone_noise_generator.generate_val_noisy_tensor(seq, args['noise_gen_folder'], device=seq.device).squeeze(0)
+                elif args['noise_type'] == 'gaussian':
+                    noise_type = 'gaussian'
+                    noise = torch.empty_like(seq).normal_(mean=0, std=args['noise_sigma']).to(device)
+                    seq = seq + noise
+                elif args['noise_type'] == 'real':
+                    seq, noise_type = real_noise_generator.apply_random_noise(seq, test_real_noise_probabilities, batch=False, noise_gen_folder=args['noise_gen_folder'])
+                elif args["noise_type"] == "soft":
+                    seq = soft_noise_generator.add_soft_noise(seq*255, sigma=2, gain=4, device=seq.device) / 255.
+                elif args['noise_type'] == 'inherit':
+                    noise_type = 'inherit'
+                    seq = seq.clone()
+                else:
+                    raise ValueError("Noise type not recognized")
 
             open_seq_time = time.time() - open_seq_time
 
@@ -219,30 +265,35 @@ def denoise_dataset(**args):
                                                 model_temporal=model_temp)
             denoise_time = time.time() - denoise_time
 
-            psnr, ssim, msssim, vmaf, vmaf_neg = compute_metrics(denframes, seq_gt, data_range=1.0)
-            psnrs.append(psnr)
-            ssims.append(ssim)
-            mssims.append(msssim)
-            vmafs.append(vmaf)
-            vmaf_negs.append(vmaf_neg)
+            psnr_v, ssim_v, msssim_v, vmaf_v, vmaf_neg_v = compute_metrics(denframes, seq_gt, vmaf, vmaf_neg, data_range=1.0)
+            psnrs.append(psnr_v.item())
+            ssims.append(ssim_v.item())
+            mssims.append(msssim_v.item())
+            vmafs.append(vmaf_v.item())
+            vmaf_negs.append(vmaf_neg_v.item())
             runtimes.append((open_seq_time, denoise_time))
 
-            save_out_video(seq, denframes, os.path.join(args['save_path'], sequence + ".mp4"), args['save_noisy'])
+            print("PSNR: {}, SSIM: {}, MS-SSIM: {}, VMAF: {}, VMAF-NEG: {}, Runtime: opened in {} s, denoised in {} s".format(
+                psnr_v, ssim_v, msssim_v, vmaf_v, vmaf_neg_v, open_seq_time, denoise_time))
 
+            save_out_video(seq, denframes, os.path.join(args['save_path'], sequence + ".mp4"), args['save_noisy'])
+    '''
     # Compute Average Metrics
     avg_psnr = mean(psnrs)
     avg_ssim = mean(ssims)
     avg_msssim = mean(mssims)
     avg_vmaf = mean(vmafs)
     avg_vmaf_neg = mean(vmaf_negs)
+    '''
     avg_seq_time = mean(runtimes[:][0])
     avg_denoise_time = mean(runtimes[:][1])
-
+    '''
     logger.info(f"Average PSNR: {avg_psnr:.2f}")
     logger.info(f"Average SSIM: {avg_ssim:.4f}")
     logger.info(f"Average MS-SSIM: {avg_msssim:.4f}")
     logger.info(f"Average VMAF: {avg_vmaf:.2f}")
     logger.info(f"Average VMAF_NEG: {avg_vmaf_neg:.2f}")
+    '''
     logger.info(f"Average Sequence Open Time: {avg_seq_time:.2f}")
     logger.info(f"Average Denoise Time: {avg_denoise_time:.2f}")
 
@@ -256,18 +307,21 @@ if __name__ == "__main__":
 
     parser.add_argument("--lightweight_model", action='store_true', help='use lightweight FastDVDnet model')
     parser.add_argument("--refine", action="store_true", help="Use a refine block at the end of the model")
+    parser.add_argument("--depthwise", action="store_true", help="Use depthwise convolutions")
 
     parser.add_argument("--test_dir", type=str, default="./data/rgb/Kodak24", help='path to sequence to denoise')
 
     parser.add_argument("--gt_dir", type=str, default=None, help='path to GT sequence to compute PSNR (default: clean input)')
 
     parser.add_argument("--data_type", type=str, default="video", choices=["video", "images"], help='denoise videos or image sequences')
+    parser.add_argument("--noise_type", type=str, default="smartphone", choices=["gaussian", "smartphone", "real", "soft", "inherit"])
 
     parser.add_argument("--max_num_fr_per_seq", type=int, default=200, help='max number of frames to load per sequence')
 
     parser.add_argument("--save_noisy", action='store_true', help="save noisy frames")
     parser.add_argument("--no_gpu", action='store_true', help="run model on CPU")
     parser.add_argument("--save_path", type=str, default='./results', help='where to save outputs')
+    parser.add_argument("--noise_gen_folder", type=str, default="./noise_generator/", help='path of noise generator folder')
 
 
     argspar = parser.parse_args()
