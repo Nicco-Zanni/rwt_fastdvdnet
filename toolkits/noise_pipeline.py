@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import os
 import argparse
+from random import randint
 
 def add_gaussian_noise(image, mean=0, sigma=25, random=False):
     """
@@ -77,23 +78,28 @@ def add_noise_image_sequence(input_folder, output_folder, noise_type='gaussian',
 
     os.makedirs(output_folder, exist_ok=True)
 
-    if soft:
-        sigma = 2
-        gain = 4
-    else:
-        sigma = 25
-        gain = 1
-
     for image_name in images:
+
+        if soft:
+            if random:
+                sigma = randint(0, 5)
+                gain = randint(3, 6)
+            else:
+                sigma = 2
+                gain = 4
+        else:
+            sigma = 25
+            gain = 1
+
         image_path = os.path.join(input_folder, image_name)
         image = cv2.imread(image_path)
 
         if noise_type == 'gaussian':
-            noisy_image = add_gaussian_noise(image, sigma=sigma, random=random)
+            noisy_image = add_gaussian_noise(image, sigma=sigma)
         elif noise_type == 'poisson':
             noisy_image = add_poisson_noise(image, gain=gain)
         elif noise_type == 'mixed':
-            noisy_image = add_gaussian_noise(image, sigma=sigma, random=random)
+            noisy_image = add_gaussian_noise(image, sigma=sigma)
             noisy_image = add_poisson_noise(noisy_image, gain=gain)
         elif noise_type == 'impulsive':
             noisy_image = add_impulsive_noise(image)
@@ -112,25 +118,29 @@ def add_noise_to_video(input_video_path, output_video_path, noise_type='gaussian
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     out = cv2.VideoWriter(output_video_path, fourcc, frame_rate, (width, height))
 
-    if soft:
-        sigma = 2
-        gain = 4
-    else:
-        sigma = 25
-        gain = 1
-
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break
 
+        if soft:
+            if random:
+                sigma = randint(0, 5)
+                gain = randint(2, 6)
+            else:
+                sigma = 2
+                gain = 4
+        else:
+            sigma = 25
+            gain = 1
+
         if noise_type == 'gaussian':
 
-            noisy_frame = add_gaussian_noise(frame, sigma=sigma, random=random)
+            noisy_frame = add_gaussian_noise(frame, sigma=sigma)
         elif noise_type == 'poisson':
             noisy_frame = add_poisson_noise(frame, gain=gain)
         elif noise_type == 'mixed':
-            noisy_frame = add_gaussian_noise(frame, sigma=sigma, random=random)
+            noisy_frame = add_gaussian_noise(frame, sigma=sigma)
             noisy_frame = add_poisson_noise(noisy_frame, gain=gain)
         elif noise_type == 'impulsive':
             noisy_frame = add_impulsive_noise(frame)
@@ -171,8 +181,9 @@ if __name__ == "__main__":
     parser.add_argument("--frame_rate", "-f", type=int, default=25, help="Frame rate of the output video")
     parser.add_argument("--data_type", "-dt", type=str, default="video", choices=["video", "images"], help="Use image sequences or videos as input")
     parser.add_argument("--noise_type", "-n", type=str, default="mixed", choices=["gaussian", "poisson", "impulsive", "mixed"], help="Type of noise to add")
-    parser.add_argument("--soft", action="store_true", help="Use soft noise")
+    parser.add_argument("--soft", "-s", type=bool, default=True, help="Use soft noise")
     parser.add_argument("--save_compressed_originals","-so", action="store_true", help="Save compressed original video")
+    parser.add_argument("--random", "-r", type=bool, default=True, help="Apply random intensity")
 
     args = parser.parse_args()
 
@@ -183,12 +194,12 @@ if __name__ == "__main__":
         for seq in sequences:
             input_folder = os.path.join(args.input_path, seq)
             output_folder = os.path.join(args.output_path, seq)
-            add_noise_image_sequence(input_folder, output_folder, noise_type=args.noise_type, soft=args.soft)
+            add_noise_image_sequence(input_folder, output_folder, noise_type=args.noise_type, soft=args.soft, random=args.random)
     elif args.data_type == "video":
         videos = [video for video in os.listdir(args.input_path) if video.endswith(('.mp4', '.avi', '.mkv'))]
         for video in videos:
             input_video_path = os.path.join(args.input_path, video)
             output_video_path = os.path.join(args.output_path, video)
-            add_noise_to_video(input_video_path, output_video_path, noise_type=args.noise_type, frame_rate=args.frame_rate, soft=args.soft)
+            add_noise_to_video(input_video_path, output_video_path, noise_type=args.noise_type, frame_rate=args.frame_rate, soft=args.soft, random=args.random)
     else:
         raise ValueError("Unsupported data type. Use 'video' or 'images'.")
