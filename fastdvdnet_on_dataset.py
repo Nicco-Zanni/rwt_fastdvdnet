@@ -8,8 +8,8 @@ import time
 import cv2
 import torch
 import torch.nn as nn
-from models import FastDVDnet
-from fastdvdnet import denoise_seq_fastdvdnet
+from models import FastDVDnet, LRW_FastDVDnet
+from fastdvdnet import denoise_seq_fastdvdnet, denoise_seq_lrw
 from utils import batch_psnr, init_logger_test, rgb2y, \
                 variable_to_cv2_image, remove_dataparallel_wrapper, open_sequence, close_logger, open_video
 from noise_generator import smartphone_noise_generator, real_noise_generator, soft_noise_generator
@@ -18,6 +18,7 @@ from PIL import Image
 import numpy as np
 from statistics import mean
 from vmaf_torch import VMAF
+import random
 from pytorch_msssim import ssim, ms_ssim
 from compute_metrics import compute_metrics
 
@@ -127,7 +128,7 @@ def denoise_dataset(**args):
 
     # Create models
     print('Loading models ...')
-    model_temp = FastDVDnet(args["lightweight_model"], refine=args["refine"], depthwise=args["depthwise"], num_input_frames=NUM_IN_FR_EXT)
+    model_temp = LRW_FastDVDnet(args["lightweight_model"], refine=args["refine"], depthwise=args["depthwise"], num_input_frames=NUM_IN_FR_EXT)
 
     # Load saved weights
     state_temp_dict = torch.load(args['model_file'], map_location=device)
@@ -181,7 +182,7 @@ def denoise_dataset(**args):
                 elif args['noise_type'] == 'real':
                     seq, noise_type = real_noise_generator.apply_random_noise(seq, test_real_noise_probabilities, batch=False, noise_gen_folder=args['noise_gen_folder'])
                 elif args["noise_type"] == "soft":
-                    seq = soft_noise_generator.add_soft_noise(seq*255, sigma=2, gain=4, device=seq.device) / 255.
+                    seq = soft_noise_generator.add_soft_noise(seq*255, sigma=random.randint(0, 5), gain=random.randint(2, 6), device=seq.device) / 255.
                 elif args['noise_type'] == 'inherit':
                     noise_type = 'inherit'
                     seq = seq.clone()
@@ -193,11 +194,12 @@ def denoise_dataset(**args):
             print("Denoising...")
             denoise_time = time.time()
             with torch.no_grad():
-                denframes = denoise_seq_fastdvdnet(seq=seq,\
+                denframes = denoise_seq_lrw(seq=seq,\
                                                 temp_psz=NUM_IN_FR_EXT,\
                                                 model_temporal=model_temp)
             denoise_time = time.time() - denoise_time
-
+            print("Denoised in: ", denoise_time)
+            
             print("Computing metrics...")
             # Compute Metrics
             '''
@@ -227,6 +229,7 @@ def denoise_dataset(**args):
                                     expand_if_needed=False,\
                                     max_num_fr=args['max_num_fr_per_seq'])
             seq = torch.from_numpy(seq).to(device)
+            open_seq_time = time.time() - open_seq_time
             if args["gt_dir"] is not None:
                 seq_gt, _, _ = open_sequence(os.path.join(args['gt_dir'], sequence),\
                                         gray_mode=False,\
@@ -254,8 +257,6 @@ def denoise_dataset(**args):
                     seq = seq.clone()
                 else:
                     raise ValueError("Noise type not recognized")
-
-            open_seq_time = time.time() - open_seq_time
 
             print("Denoising...")
             denoise_time = time.time()

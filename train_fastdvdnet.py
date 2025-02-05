@@ -5,6 +5,7 @@ import wandb
 import time
 import argparse
 import numpy as np
+import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -15,7 +16,7 @@ from dataloaders import train_dali_loader, train_dali_loader_dual
 from utils import *
 from train_common import resume_training, lr_scheduler, log_train_psnr, \
 					validate_and_log, save_model_checkpoint
-from noise_generator import smartphone_noise_generator, real_noise_generator, soft_noise_generator
+from noise_generator import smartphone_noise_generator, real_noise_generator, soft_noise_generator, video_compressor
 from noise_generator.real_noise_config import train_real_noise_probabilities
 from PIL import Image
 from vmaf_torch import VMAF
@@ -70,7 +71,7 @@ def main(**args):
 	writer, logger = init_logging(args)
 
 	# Define GPU devices
-	device_ids = [0]
+	device_ids = [1]
 	torch.backends.cudnn.benchmark = True # CUDNN optimization
 
 	# Create model
@@ -151,7 +152,9 @@ def main(**args):
 					imgn_train, _ = real_noise_generator.apply_random_noise(img_train, train_real_noise_probabilities, batch=True, noise_gen_folder=args["noise_gen_folder"])
 					img_train, imgn_train, gt_train = normalize_augment(img_train, imgn_train, ctrl_fr_idx)
 				elif args["noise_type"] == "soft":
-					imgn_train = soft_noise_generator.add_soft_noise(img_train, sigma=2, gain=4, device=img_train.device)
+					imgn_train = soft_noise_generator.add_soft_noise(img_train, sigma=random.randint(0, 5), gain=random.randint(2, 6), device=img_train.device)
+					#imgn_train = video_compressor.compress_batch(imgn_train.contiguous().view(imgn_train.size()[0], args["temp_patch_size"], 3, imgn_train.size()[-2], imgn_train.size()[-1]))
+					#imgn_train = imgn_train.contiguous().view(imgn_train.size()[0], -1, imgn_train.size()[-2], imgn_train.size()[-1])
 					img_train, imgn_train, gt_train = normalize_augment(img_train, imgn_train, ctrl_fr_idx) # [N, F*C, H, W] [0, 1]
 				elif args["noise_type"] == "inherit":
 					raise ValueError("Inherit noise not supported without ground truth")
