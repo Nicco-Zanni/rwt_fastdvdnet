@@ -16,7 +16,7 @@ from dataloaders import train_dali_loader, train_dali_loader_dual
 from utils import *
 from train_common import resume_training, lr_scheduler, log_train_psnr, \
 					validate_and_log, save_model_checkpoint
-from noise_generator import smartphone_noise_generator, real_noise_generator, soft_noise_generator, video_compressor
+from noise_generator import smartphone_noise_generator, real_noise_generator, soft_noise_generator
 from noise_generator.real_noise_config import train_real_noise_probabilities
 from PIL import Image
 from vmaf_torch import VMAF

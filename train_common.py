@@ -7,7 +7,7 @@ import torch
 import torchvision.utils as tutils
 from utils import batch_psnr, rgb2y
 from fastdvdnet import denoise_seq_fastdvdnet
-from noise_generator import smartphone_noise_generator, real_noise_generator, soft_noise_generator, video_compressor
+from noise_generator import smartphone_noise_generator, real_noise_generator, soft_noise_generator
 from noise_generator.real_noise_config import test_real_noise_probabilities
 from pytorch_msssim import ssim, ms_ssim
 from vmaf_torch import VMAF
