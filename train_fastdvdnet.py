@@ -9,6 +9,7 @@ import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import deepinv as dinv
 from statistics import mean
 from models import FastDVDnet
 from dataset import ValDataset, ValDatasetDual
@@ -79,7 +80,9 @@ def main(**args):
 	model = nn.DataParallel(model, device_ids=device_ids).cuda()
 
 	# Define loss
-	criterion = nn.MSELoss(reduction='sum')
+	mse_metric = dinv.loss.metric.MSE()
+	# criterion = nn.MSELoss(reduction='sum')
+	criterion = dinv.loss.SupLoss(metric = mse_metric)
 	criterion.cuda()
 	if args['vmaf_loss']:
 		vmaf = VMAF(temporal_pooling=True).cuda()
@@ -174,7 +177,7 @@ def main(**args):
 			out_train = model(imgn_train)
 
 			# Compute loss
-			mse_loss = criterion(gt_train, out_train) / (N*2)
+			mse_loss = criterion(gt_train, out_train) #/ (N*2) SupLoss dovrebbe gestirlo internamente
 			vmaf_loss = 0
 			vmaf_neg_loss = 0
 			if args['vmaf_loss'] or args['vmaf_neg_loss']:
