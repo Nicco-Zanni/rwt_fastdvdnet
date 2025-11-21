@@ -81,7 +81,6 @@ def main(**args):
 
 	# Define loss
 	mse_metric = dinv.loss.metric.MSE()
-	# criterion = nn.MSELoss(reduction='sum')
 	criterion = dinv.loss.SupLoss(metric = mse_metric)
 	criterion.cuda()
 	if args['vmaf_loss']:
@@ -177,7 +176,13 @@ def main(**args):
 			out_train = model(imgn_train)
 
 			# Compute loss
-			mse_loss = criterion(gt_train, out_train) #/ (N*2) SupLoss dovrebbe gestirlo internamente
+			mse_loss = criterion(gt_train, out_train) / (N*2)
+			# dinv.metric.MSE calculated as (1/C_out*H_out*W_out)*(x -y)^2
+			_ , C_out, H_out, W_out = out_train.shape 
+			mse_loss = mse_loss * C_out * H_out * W_out # necessary only when we use sum as reduction
+			# by default no reduction is applied
+			mse_loss = mse_loss.sum()
+			
 			vmaf_loss = 0
 			vmaf_neg_loss = 0
 			if args['vmaf_loss'] or args['vmaf_neg_loss']:
@@ -190,6 +195,7 @@ def main(**args):
 				vmaf_neg_loss = 100 - vmaf_neg(gt_train_y, out_train_y)
 			
 			loss = args["mse_coef"] * mse_loss + args["vmaf_coef"] * vmaf_loss + args["vmaf_neg_coef"] * vmaf_neg_loss
+
 			loss.backward()
 			optimizer.step()
 			train_losses.append(loss.item())
