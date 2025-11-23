@@ -22,7 +22,11 @@ def temp_denoise(model, noisyframe):
 	noisyframe = F.pad(input=noisyframe, pad=padexp, mode='reflect')
 
 	# denoise
-	out = torch.clamp(model(noisyframe), 0., 1.)
+
+	res = model(noisyframe)
+	if isinstance(res, tuple):
+		res = res[0]
+	out = torch.clamp(res, 0., 1.)
 
 	if expanded_h:
 		out = out[:, :, :-expanded_h, :]

@@ -278,23 +278,23 @@ def denoise_dataset(**args):
                 psnr_v, ssim_v, msssim_v, vmaf_v, vmaf_neg_v, open_seq_time, denoise_time))
 
             save_out_video(seq, denframes, os.path.join(args['save_path'], sequence + ".mp4"), args['save_noisy'])
-    '''
+    
     # Compute Average Metrics
     avg_psnr = mean(psnrs)
     avg_ssim = mean(ssims)
     avg_msssim = mean(mssims)
     avg_vmaf = mean(vmafs)
     avg_vmaf_neg = mean(vmaf_negs)
-    '''
+    
     avg_seq_time = mean(runtimes[:][0])
     avg_denoise_time = mean(runtimes[:][1])
-    '''
+    
     logger.info(f"Average PSNR: {avg_psnr:.2f}")
     logger.info(f"Average SSIM: {avg_ssim:.4f}")
     logger.info(f"Average MS-SSIM: {avg_msssim:.4f}")
     logger.info(f"Average VMAF: {avg_vmaf:.2f}")
     logger.info(f"Average VMAF_NEG: {avg_vmaf_neg:.2f}")
-    '''
+    
     logger.info(f"Average Sequence Open Time: {avg_seq_time:.2f}")
     logger.info(f"Average Denoise Time: {avg_denoise_time:.2f}")
 
