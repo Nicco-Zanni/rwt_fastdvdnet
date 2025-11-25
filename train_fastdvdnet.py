@@ -80,8 +80,9 @@ def main(**args):
 	model = nn.DataParallel(model, device_ids=device_ids).cuda()
 
 	# Define loss
-	mse_metric = dinv.loss.metric.MSE()
-	criterion = dinv.loss.SupLoss(metric = mse_metric)
+	#mse_metric = dinv.loss.metric.MSE(reduction = "sum")
+	l1l2_metric = dinv.loss.metric.L1L2(reduction = "sum")
+	criterion = dinv.loss.SupLoss(metric = l1l2_metric)
 	criterion.cuda()
 	if args['vmaf_loss']:
 		vmaf = VMAF(temporal_pooling=True).cuda()
@@ -176,12 +177,10 @@ def main(**args):
 			out_train = model(imgn_train)
 
 			# Compute loss
-			mse_loss = criterion(gt_train, out_train) / (N*2)
+			l1l2_loss = criterion(gt_train, out_train) #/ (N*2) used when the metric is mse
 			# dinv.metric.MSE calculated as (1/C_out*H_out*W_out)*(x -y)^2
-			_ , C_out, H_out, W_out = out_train.shape 
-			mse_loss = mse_loss * C_out * H_out * W_out # necessary only when we use sum as reduction
-			# by default no reduction is applied
-			mse_loss = mse_loss.sum()
+			#_ , C_out, H_out, W_out = out_train.shape 
+			#l1l2_loss = l1l2_loss * C_out * H_out * W_out # necessary only when we use sum as reduction and mse as metric
 			
 			vmaf_loss = 0
 			vmaf_neg_loss = 0
@@ -194,7 +193,7 @@ def main(**args):
 			if args['vmaf_neg_loss']:
 				vmaf_neg_loss = 100 - vmaf_neg(gt_train_y, out_train_y)
 			
-			loss = args["mse_coef"] * mse_loss + args["vmaf_coef"] * vmaf_loss + args["vmaf_neg_coef"] * vmaf_neg_loss
+			loss = args["mse_coef"] * l1l2_loss + args["vmaf_coef"] * vmaf_loss + args["vmaf_neg_coef"] * vmaf_neg_loss
 
 			loss.backward()
 			optimizer.step()
