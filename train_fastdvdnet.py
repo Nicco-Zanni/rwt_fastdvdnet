@@ -80,7 +80,7 @@ def main(**args):
 
 	# Define loss
 	
-	mse_criterion = nn.MSELoss(reduction='sum')
+	mse_criterion = nn.MSELoss(reduction = 'sum')
 	mse_criterion.cuda()
 	
 	if args['lpips_loss']:
@@ -190,22 +190,23 @@ def main(**args):
 			out_train = model(imgn_train)
 
 			# Compute loss
-			mse_loss = mse_criterion(gt_train, out_train) / (N*2)
+			mse_loss = (mse_criterion(gt_train, out_train) / (N*2)) * args["mse_coef"]
 			print('MSE: ', mse_loss)
 
 			lpips_loss = 0
 			if args['lpips_loss']:
-				lpips_loss = lpips_criterion(gt_train, out_train)
+				lpips_loss = lpips_criterion(gt_train, out_train) * 100 * args["lpips_coef"]
 				print('LPIPS: ', lpips_loss)
 			
 			ssim_loss = 0
 			ms_ssim_loss = 0
 			if args['ssim_loss']:
-				ssim_loss = ssim_criterion(gt_train, out_train)
+				ssim_loss = ssim_criterion(gt_train, out_train) * args["ssim_coef"]
 				print('SSIM: ', ssim_loss)
 			if args['ms_ssim_loss']:
-				ms_ssim_loss = ms_ssim_criterion(gt_train, out_train)
+				ms_ssim_loss = ms_ssim_criterion(gt_train, out_train) * args["ms_ssim_coef"]
 				print('MS-SSIM: ', ms_ssim_loss)
+				
 			
 			vmaf_loss = 0
 			vmaf_neg_loss = 0
@@ -214,18 +215,18 @@ def main(**args):
 				out_train_y = rgb2y(out_train.cuda())
 
 			if args['vmaf_loss']:
-				vmaf_loss = 100 - vmaf(gt_train_y, out_train_y)
-				print('VMAF: ', vmaf_loss)
+				vmaf_loss = 100 - vmaf(gt_train_y, out_train_y)	* args["vmaf_coef"]
+				print('VMAF: ', vmaf_loss)			
 			if args['vmaf_neg_loss']:
-				vmaf_neg_loss = 100 - vmaf_neg(gt_train_y, out_train_y)
+				vmaf_neg_loss = 100 - vmaf_neg(gt_train_y, out_train_y) * args["vmaf_neg_coef"]
 				print('VMAF NEG: ', vmaf_neg_loss)
 			
-			loss = ( args["mse_coef"] * mse_loss
-					+ args["vmaf_coef"] * vmaf_loss 
-					+ args["vmaf_neg_coef"] * vmaf_neg_loss 
-					+ args["lpips_coef"] * lpips_loss 
-					+ args["ssim_coef"] * ssim_loss
-					+ args["ms_ssim_coef"] * ms_ssim_loss
+			loss = (mse_loss
+					+ vmaf_loss 
+					+ vmaf_neg_loss 
+					+ lpips_loss 
+					+ ssim_loss
+					+ ms_ssim_loss
 			)
 
 			loss.backward()
