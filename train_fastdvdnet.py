@@ -84,7 +84,7 @@ def main(**args):
 	mse_criterion.cuda()
 	
 	if args['lpips_loss']:
-		lpips_metric = dinv.loss.metric.LPIPS(device = 'gpu', as_loss = True, reduction = 'sum')
+		lpips_metric = dinv.loss.metric.LPIPS(device = 'cuda', as_loss = True, reduction = 'sum')
 		lpips_criterion = dinv.loss.SupLoss(metric = lpips_metric)
 		lpips_criterion.cuda()
 
