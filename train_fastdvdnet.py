@@ -191,17 +191,21 @@ def main(**args):
 
 			# Compute loss
 			mse_loss = mse_criterion(gt_train, out_train) / (N*2)
+			print('MSE: ', mse_loss)
 
 			lpips_loss = 0
 			if args['lpips_loss']:
 				lpips_loss = lpips_criterion(gt_train, out_train)
+				print('LPIPS: ', lpips_loss)
 			
 			ssim_loss = 0
 			ms_ssim_loss = 0
 			if args['ssim_loss']:
 				ssim_loss = ssim_criterion(gt_train, out_train)
+				print('SSIM: ', ssim_loss)
 			if args['ms_ssim_loss']:
 				ms_ssim_loss = ms_ssim_criterion(gt_train, out_train)
+				print('MS-SSIM: ', ms_ssim_loss)
 			
 			vmaf_loss = 0
 			vmaf_neg_loss = 0
@@ -211,8 +215,10 @@ def main(**args):
 
 			if args['vmaf_loss']:
 				vmaf_loss = 100 - vmaf(gt_train_y, out_train_y)
+				print('VMAF: ', vmaf_loss)
 			if args['vmaf_neg_loss']:
 				vmaf_neg_loss = 100 - vmaf_neg(gt_train_y, out_train_y)
+				print('VMAF NEG: ', vmaf_neg_loss)
 			
 			loss = ( args["mse_coef"] * mse_loss
 					+ args["vmaf_coef"] * vmaf_loss 
