@@ -22,7 +22,6 @@ from noise_generator.real_noise_config import train_real_noise_probabilities
 from PIL import Image
 from vmaf_torch import VMAF
 
-
 def main(**args):
 	r"""Performs the main training loop
 	"""
@@ -80,12 +79,26 @@ def main(**args):
 	model = nn.DataParallel(model, device_ids=device_ids).cuda()
 
 	# Define loss
-	#mse_metric = dinv.loss.metric.MSE(reduction = "sum")
-	l1l2_metric = dinv.loss.metric.L1L2(reduction = "sum")
-	criterion = dinv.loss.SupLoss(metric = l1l2_metric)
-	criterion.cuda()
+	
+	mse_criterion = nn.MSELoss(reduction='sum')
+	mse_criterion.cuda()
+	
+	if args['lpips_loss']:
+		lpips_metric = dinv.loss.metric.LPIPS(device = 'gpu', as_loss = True, reduction = 'sum')
+		lpips_criterion = dinv.loss.SupLoss(metric = lpips_metric)
+		lpips_criterion.cuda()
+
+	if args['ssim_loss']:
+		ssim_metric = dinv.loss.metric.SSIM(train_loss  = True, reduction = 'sum')
+		ssim_criterion = dinv.loss.SupLoss(metric = ssim_metric)
+		ssim_criterion.cuda()
+	if args['ms_ssim_loss']:
+		ms_ssim_metric = dinv.loss.metric.SSIM(train_loss  = True, reduction = 'sum', multiscale = True)
+		ms_ssim_criterion = dinv.loss.SupLoss(metric = ms_ssim_metric)
+		ms_ssim_criterion.cuda()
+
 	if args['vmaf_loss']:
-		vmaf = VMAF(temporal_pooling=True).cuda()
+		vmaf = VMAF(temporal_pooling=True).cuda()		
 	if args['vmaf_neg_loss']:
 		vmaf_neg = VMAF(NEG=True, temporal_pooling=True).cuda()
 
@@ -177,10 +190,18 @@ def main(**args):
 			out_train = model(imgn_train)
 
 			# Compute loss
-			l1l2_loss = criterion(gt_train, out_train) #/ (N*2) used when the metric is mse
-			# dinv.metric.MSE calculated as (1/C_out*H_out*W_out)*(x -y)^2
-			#_ , C_out, H_out, W_out = out_train.shape 
-			#l1l2_loss = l1l2_loss * C_out * H_out * W_out # necessary only when we use sum as reduction and mse as metric
+			mse_loss = mse_criterion(gt_train, out_train) / (N*2)
+
+			lpips_loss = 0
+			if args['lpips_loss']:
+				lpips_loss = lpips_criterion(gt_train, out_train)
+			
+			ssim_loss = 0
+			ms_ssim_loss = 0
+			if args['ssim_loss']:
+				ssim_loss = ssim_criterion(gt_train, out_train)
+			if args['ms_ssim_loss']:
+				ms_ssim_loss = ms_ssim_criterion(gt_train, out_train)
 			
 			vmaf_loss = 0
 			vmaf_neg_loss = 0
@@ -193,7 +214,13 @@ def main(**args):
 			if args['vmaf_neg_loss']:
 				vmaf_neg_loss = 100 - vmaf_neg(gt_train_y, out_train_y)
 			
-			loss = args["mse_coef"] * l1l2_loss + args["vmaf_coef"] * vmaf_loss + args["vmaf_neg_coef"] * vmaf_neg_loss
+			loss = ( args["mse_coef"] * mse_loss
+					+ args["vmaf_coef"] * vmaf_loss 
+					+ args["vmaf_neg_coef"] * vmaf_neg_loss 
+					+ args["lpips_coef"] * lpips_loss 
+					+ args["ssim_coef"] * ssim_loss
+					+ args["ms_ssim_coef"] * ms_ssim_loss
+			)
 
 			loss.backward()
 			optimizer.step()
@@ -314,12 +341,25 @@ if __name__ == "__main__":
 	parser.add_argument("--gt_dir", type=str, default=None, help="Path to ground truth images (default: input images)")
 	parser.add_argument("--gt_val_dir", type=str, default=None, help="Path to ground truth images for validation (default: val images)")
 
+	# MSE loss
+	parser.add_argument("--mse_coef", type=float, default='0.5', help="MSE loss weight")
+
 	# VMAF Loss
 	parser.add_argument("--vmaf_loss", action='store_true', help="Use VMAF loss")
 	parser.add_argument("--vmaf_neg_loss", action='store_true', help="Use VMAF loss")
 	parser.add_argument("--vmaf_coef", type=float, default='0.5', help="VMAF loss weight")
 	parser.add_argument("--vmaf_neg_coef", type=float, default='0.5', help="VMAF NEG loss weight")
-	parser.add_argument("--mse_coef", type=float, default='0.5', help="MSE loss weight")
+
+	# LPIPS loss
+	parser.add_argument("--lpips_loss", action='store_true', help="Use LPIPS loss")
+	parser.add_argument("--lpips_coef", type=float, default='0.5', help="LPIPS loss weight")
+
+	# SSIM loss
+	parser.add_argument("--ssim_loss", action='store_true', help="Use SSIM loss")
+	parser.add_argument("--ms_ssim_loss", action='store_true', help="Use MS-SSIM loss")
+	parser.add_argument("--ssim_coef", type=float, default='0.5', help="SSIM loss weight")
+	parser.add_argument("--ms_ssim_coef", type=float, default='0.5', help="MS-SSIM loss weight")
+
 	# WANDB
 	parser.add_argument("--wandb_log", type=bool, default=False, help="Log in Weights & Biases")
 	argspar = parser.parse_args()
