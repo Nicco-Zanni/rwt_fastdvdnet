@@ -80,20 +80,20 @@ def main(**args):
 
 	# Define loss
 	
-	mse_criterion = nn.MSELoss(reduction = 'sum')
+	mse_criterion = nn.MSELoss(reduction = 'mean')
 	mse_criterion.cuda()
 	
 	if args['lpips_loss']:
-		lpips_metric = dinv.loss.metric.LPIPS(device = 'cuda', as_loss = True, reduction = 'sum')
+		lpips_metric = dinv.loss.metric.LPIPS(device = 'cuda', as_loss = True, reduction = 'mean')
 		lpips_criterion = dinv.loss.SupLoss(metric = lpips_metric)
 		lpips_criterion.cuda()
 
 	if args['ssim_loss']:
-		ssim_metric = dinv.loss.metric.SSIM(train_loss  = True, reduction = 'sum')
+		ssim_metric = dinv.loss.metric.SSIM(train_loss  = True, reduction = 'mean')
 		ssim_criterion = dinv.loss.SupLoss(metric = ssim_metric)
 		ssim_criterion.cuda()
 	if args['ms_ssim_loss']:
-		ms_ssim_metric = dinv.loss.metric.SSIM(train_loss  = True, reduction = 'sum', multiscale = True)
+		ms_ssim_metric = dinv.loss.metric.SSIM(train_loss  = True, reduction = 'mean', multiscale = True)
 		ms_ssim_criterion = dinv.loss.SupLoss(metric = ms_ssim_metric)
 		ms_ssim_criterion.cuda()
 
@@ -190,12 +190,12 @@ def main(**args):
 			out_train = model(imgn_train)
 
 			# Compute loss
-			mse_loss = (mse_criterion(gt_train, out_train) / (N*2)) * args["mse_coef"]
+			mse_loss = (mse_criterion(gt_train, out_train) * args["mse_coef"]) # / (N*2))
 			print('MSE: ', mse_loss)
 
 			lpips_loss = 0
 			if args['lpips_loss']:
-				lpips_loss = lpips_criterion(gt_train, out_train) * 100 * args["lpips_coef"]
+				lpips_loss = lpips_criterion(gt_train, out_train) * args["lpips_coef"]
 				print('LPIPS: ', lpips_loss)
 			
 			ssim_loss = 0
@@ -215,10 +215,10 @@ def main(**args):
 				out_train_y = rgb2y(out_train.cuda())
 
 			if args['vmaf_loss']:
-				vmaf_loss = 100 - vmaf(gt_train_y, out_train_y)	* args["vmaf_coef"]
+				vmaf_loss = (100 - vmaf(gt_train_y, out_train_y))	* args["vmaf_coef"]
 				print('VMAF: ', vmaf_loss)			
 			if args['vmaf_neg_loss']:
-				vmaf_neg_loss = 100 - vmaf_neg(gt_train_y, out_train_y) * args["vmaf_neg_coef"]
+				vmaf_neg_loss = (100 - vmaf_neg(gt_train_y, out_train_y)) * args["vmaf_neg_coef"]
 				print('VMAF NEG: ', vmaf_neg_loss)
 			
 			loss = (mse_loss
