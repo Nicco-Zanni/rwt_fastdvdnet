@@ -2,8 +2,10 @@ import os
 import cv2
 
 # Path to the directory containing MP4 videos
-input_dir = "../data/DAVIS/DAVIS_train/val/soft/mp4_td_avc"
-output_dir = "../data/DAVIS/DAVIS_train/val/soft/JPEG_td_avc"
+#input_dir = "../data/DAVIS/DAVIS_train/val/smartphone/mp4_td_avc"
+#output_dir = "../data/DAVIS/DAVIS_train/val/smartphone/JPEG_td_avc"
+input_dir = "../data/set8/set8_gt_smartphone_videos"
+output_dir = "../data/set8/set8_gt_smartphone_sequences"
 
 # Create the output directory if it doesn't exist
 os.makedirs(output_dir, exist_ok=True)

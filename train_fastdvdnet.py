@@ -21,6 +21,7 @@ from noise_generator import smartphone_noise_generator, real_noise_generator, so
 from noise_generator.real_noise_config import train_real_noise_probabilities
 from PIL import Image
 from vmaf_torch import VMAF
+from dino_perceptual import DINOPerceptual
 
 def main(**args):
 	r"""Performs the main training loop
@@ -101,6 +102,10 @@ def main(**args):
 		vmaf = VMAF(temporal_pooling=True).cuda()		
 	if args['vmaf_neg_loss']:
 		vmaf_neg = VMAF(NEG=True, temporal_pooling=True).cuda()
+	
+	if args['dino_loss']:
+		dino_criterion = DINOPerceptual(model_size = "B", version = "v2").cuda().eval()
+		#dino_criterion = torch.compile(dino_criterion, fullgraph = True)
 
 	# Optimizer
 	optimizer = optim.Adam(model.parameters(), lr=args['lr'])
@@ -220,13 +225,22 @@ def main(**args):
 			if args['vmaf_neg_loss']:
 				vmaf_neg_loss = (100 - vmaf_neg(gt_train_y, out_train_y)) * args["vmaf_neg_coef"]
 				print('VMAF NEG: ', vmaf_neg_loss)
-			
+
+			dino_loss = 0
+			if args['dino_loss']:
+				out_train_dino = (out_train * 2) - 1
+				gt_train_dino = (gt_train * 2) -1
+				dino_loss = dino_criterion(out_train_dino, gt_train_dino).mean()
+				dino_loss = dino_loss * args["dino_coef"]
+				print('DINO: ', dino_loss)
+
 			loss = (mse_loss
 					+ vmaf_loss 
 					+ vmaf_neg_loss 
 					+ lpips_loss 
 					+ ssim_loss
 					+ ms_ssim_loss
+					+ dino_loss
 			)
 
 			loss.backward()
@@ -367,6 +381,10 @@ if __name__ == "__main__":
 	parser.add_argument("--ssim_coef", type=float, default='0.5', help="SSIM loss weight")
 	parser.add_argument("--ms_ssim_coef", type=float, default='0.5', help="MS-SSIM loss weight")
 
+	# DINO loss
+	parser.add_argument("--dino_loss", action='store_true', help="Use DINO loss")
+	parser.add_argument("--dino_coef", type=float, default='0.5', help="DINO loss weight")
+	
 	# WANDB
 	parser.add_argument("--wandb_log", type=bool, default=False, help="Log in Weights & Biases")
 	argspar = parser.parse_args()
